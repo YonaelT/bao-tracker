@@ -36,9 +36,8 @@
     ::-webkit-scrollbar-thumb { background: #262630; border-radius: 9999px; }
     ::-webkit-scrollbar-thumb:hover { background: #3f3f50; }
 
-    /* Odometer & Ripple Animations */
     @keyframes odometer-up {
-      0% { transform: translateY(10px); opacity: 0; }
+      0% { transform: translateY(8px); opacity: 0; }
       100% { transform: translateY(0); opacity: 1; }
     }
     .animate-odo { animation: odometer-up 0.18s cubic-bezier(0.16, 1, 0.3, 1); }
@@ -52,37 +51,26 @@
     path.sector { transition: opacity 0.3s ease, stroke-width 0.2s ease; cursor: pointer; }
     path.sector:hover { opacity: 0.88 !important; stroke: #ffffff !important; stroke-width: 2px !important; }
     path.sector.search-highlight { stroke: #fbbf24 !important; stroke-width: 3px !important; filter: drop-shadow(0 0 10px #fbbf24); }
-    path.sector.dimmed { opacity: 0.15 !important; pointer-events: none; }
-
-    /* Ambient Background Grid & Floating Particles */
-    .bg-ambient {
-      background-image:
-        radial-gradient(circle at 50% 50%, rgba(59, 130, 246, 0.04) 0%, transparent 60%),
-        linear-gradient(rgba(255, 255, 255, 0.015) 1px, transparent 1px),
-        linear-gradient(90deg, rgba(255, 255, 255, 0.015) 1px, transparent 1px);
-      background-size: 100% 100%, 40px 40px, 40px 40px;
-    }
 
     .glass-panel {
-      background: rgba(18, 18, 21, 0.82);
+      background: rgba(18, 18, 21, 0.85);
       backdrop-filter: blur(20px);
       -webkit-backdrop-filter: blur(20px);
     }
   </style>
 </head>
-<body class="bg-canvas text-gray-100 flex h-screen w-screen overflow-hidden select-none bg-ambient">
+<body class="bg-canvas text-gray-100 flex h-screen w-screen overflow-hidden select-none relative">
 
-  <!-- TOP NAVIGATION & COMMAND BAR -->
-  <div class="absolute top-4 left-6 right-[400px] h-12 z-20 flex items-center justify-between pointer-events-none gap-4">
+  <!-- AMBIENT FLOATING PARTICLES BACKGROUND -->
+  <canvas id="particle-canvas" class="fixed inset-0 pointer-events-none z-0"></canvas>
+
+  <!-- TOP NAVIGATION BAR -->
+  <div class="absolute top-4 left-6 right-6 h-12 z-20 flex items-center justify-between pointer-events-none gap-4">
     <!-- Zoom History & Breadcrumbs -->
     <div class="flex items-center gap-2 pointer-events-auto">
       <div class="flex bg-panel/90 border border-borderDark rounded-lg p-1 shadow-lg backdrop-blur-md">
-        <button onclick="navHistory(-1)" id="btn-back" title="Back (Alt+Left)" class="p-1.5 hover:bg-white/10 rounded text-gray-400 hover:text-white disabled:opacity-30 disabled:pointer-events-none transition">
-          ◀
-        </button>
-        <button onclick="navHistory(1)" id="btn-fwd" title="Forward (Alt+Right)" class="p-1.5 hover:bg-white/10 rounded text-gray-400 hover:text-white disabled:opacity-30 disabled:pointer-events-none transition">
-          ▶
-        </button>
+        <button onclick="navHistory(-1)" id="btn-back" title="Back (Alt+Left)" class="p-1.5 hover:bg-white/10 rounded text-gray-400 hover:text-white disabled:opacity-30 disabled:pointer-events-none transition">◀</button>
+        <button onclick="navHistory(1)" id="btn-fwd" title="Forward (Alt+Right)" class="p-1.5 hover:bg-white/10 rounded text-gray-400 hover:text-white disabled:opacity-30 disabled:pointer-events-none transition">▶</button>
       </div>
 
       <div id="breadcrumbs" class="flex items-center gap-1.5 bg-panel/90 border border-borderDark px-4 py-2 rounded-lg shadow-lg backdrop-blur-md text-xs font-semibold tracking-wide overflow-x-auto max-w-xl">
@@ -90,62 +78,73 @@
       </div>
     </div>
 
-    <!-- Quick Actions & Command Palette Trigger -->
-    <div class="flex items-center gap-2 pointer-events-auto">
-      <button onclick="toggleFocusMode()" id="btn-focus" title="Toggle Focus Mode"
-        class="bg-panel/90 border border-borderDark hover:border-gray-500 px-3 py-2 rounded-lg text-xs font-medium text-gray-300 hover:text-white transition shadow-lg flex items-center gap-1.5 backdrop-blur-md">
-        <span>◎</span> <span id="focus-text">Focus Off</span>
-      </button>
-
-      <button onclick="openCommandPalette()"
-        class="bg-panel/90 border border-borderDark hover:border-accent px-3.5 py-2 rounded-lg text-xs font-medium text-gray-400 hover:text-white transition shadow-lg flex items-center gap-3 backdrop-blur-md">
-        <span class="flex items-center gap-1 text-gray-300">🔍 Search or Command...</span>
-        <kbd class="bg-white/10 border border-white/10 px-1.5 py-0.5 rounded text-[10px] text-gray-300 font-mono">Ctrl K</kbd>
+    <!-- Sidebar Toggle Button -->
+    <div class="pointer-events-auto flex items-center gap-2">
+      <button onclick="toggleSidebar()" id="btn-toggle-sidebar"
+        class="bg-panel/90 border border-borderDark hover:border-accent px-3.5 py-2 rounded-lg text-xs font-medium text-gray-300 hover:text-white transition shadow-lg flex items-center gap-2 backdrop-blur-md">
+        <span>☰</span> <span id="sidebar-toggle-text">Hide Sidebar</span>
       </button>
     </div>
   </div>
 
+  <!-- HOVER TOOLTIP -->
+  <div id="tooltip" class="fixed hidden z-50 pointer-events-none bg-panel/95 border border-borderDark px-3.5 py-2.5 rounded-xl shadow-2xl backdrop-blur-md text-xs transition-opacity duration-150"></div>
+
   <!-- CENTER: D3 INFINITE CANVAS & SUNBURST -->
-  <div class="flex-1 h-full relative overflow-hidden" id="canvas-container">
+  <div class="flex-1 h-full relative overflow-hidden transition-all duration-300 z-10" id="main-content" style="margin-right: 380px;">
     <div id="chart" class="w-full h-full cursor-grab active:cursor-grabbing"></div>
 
-    <!-- Camera Reset Button (Appears when panned/zoomed via scrollwheel) -->
+    <!-- Camera Reset Button -->
     <button id="btn-reset-cam" onclick="resetCamera()"
       class="absolute bottom-6 right-6 bg-panel/90 border border-borderDark hover:border-accent px-3 py-1.5 rounded-lg text-xs text-gray-300 hover:text-white shadow-xl backdrop-blur-md hidden pointer-events-auto transition">
       ⌖ Reset Camera View
     </button>
 
-    <!-- Autosave & State Indicator -->
+    <!-- Autosave Indicator -->
     <div class="absolute bottom-6 left-6 flex items-center gap-2 pointer-events-none">
       <div id="save-indicator" class="bg-panel/80 border border-borderDark/80 px-3 py-1.5 rounded-md text-[11px] text-gray-400 backdrop-blur-sm flex items-center gap-2 transition-opacity duration-300 opacity-0">
         <span class="w-2 h-2 rounded-full bg-green-500 animate-pulse"></span>
-        <span>State Snapshot Saved</span>
+        <span>Snapshot Saved</span>
       </div>
     </div>
   </div>
 
-  <!-- RIGHT SIDEBAR: PRO INSPECTOR & DRAG-AND-DROP EDITOR -->
-  <div class="w-[380px] h-full glass-panel border-l border-borderDark flex flex-col z-20 shadow-2xl relative">
+  <!-- RIGHT SIDEBAR: PRO INSPECTOR -->
+  <div id="sidebar" class="fixed top-0 right-0 w-[380px] h-full glass-panel border-l border-borderDark flex flex-col z-30 shadow-2xl transition-transform duration-300 ease-in-out translate-x-0">
 
     <!-- Top Bar: Undo/Redo & Node Metadata -->
-    <div class="p-5 border-b border-borderDark bg-black/20 flex flex-col gap-3">
+    <div class="p-5 border-b border-borderDark bg-black/20 flex flex-col gap-3.5">
       <div class="flex items-center justify-between text-xs text-gray-400 font-medium">
-        <span id="sidebar-depth-label" class="text-accent uppercase tracking-wider font-bold">Root Level</span>
+        <span id="sidebar-depth-label" class="text-accent uppercase tracking-wider font-bold">Root Overview</span>
         <div class="flex items-center gap-1">
+          <button onclick="toggleSidebarSearch()" title="Search Nodes" class="px-2 py-1 bg-white/5 hover:bg-white/10 rounded text-gray-300 transition flex items-center gap-1 mr-1">
+            <span>🔍</span> <span class="text-[11px]">Search</span>
+          </button>
           <button onclick="undo()" id="btn-undo" title="Undo (Ctrl+Z)" disabled class="p-1 hover:bg-white/10 rounded disabled:opacity-25 transition">↩</button>
           <button onclick="redo()" id="btn-redo" title="Redo (Ctrl+Y)" disabled class="p-1 hover:bg-white/10 rounded disabled:opacity-25 transition">↪</button>
           <button onclick="exportJSON()" title="Export Backup JSON" class="p-1 hover:bg-white/10 rounded text-gray-300 transition ml-1">💾</button>
         </div>
       </div>
 
+      <!-- Inline Sidebar Search Box (Hidden by default) -->
+      <div id="sidebar-search-box" class="hidden flex-col gap-2 pt-1 pb-2 border-b border-borderDark/50 animate-fade-in">
+        <div class="flex items-center gap-2 bg-black/50 border border-borderDark rounded-lg px-2.5 py-1.5">
+          <span class="text-gray-500 text-xs">🔍</span>
+          <input type="text" id="sidebar-search-input" placeholder="Type to filter & highlight..."
+            class="w-full bg-transparent text-xs text-white placeholder-gray-500 focus:outline-none">
+          <button onclick="toggleSidebarSearch()" class="text-gray-500 hover:text-white text-xs">✕</button>
+        </div>
+        <div id="sidebar-search-results" class="max-h-36 overflow-y-auto space-y-1 text-xs divide-y divide-borderDark/30"></div>
+      </div>
+
       <div class="flex items-baseline justify-between gap-2">
         <div class="flex items-center gap-2 flex-1 overflow-hidden">
-          <span id="sidebar-icon" class="text-2xl">⚡</span>
-          <h1 class="text-xl font-bold text-white tracking-tight truncate" id="sidebar-title">Total/h1>
+          <h1 class="text-xl font-bold text-white tracking-tight truncate" id="sidebar-title">Total</h1>
+          <button onclick="renameCurrentNode()" title="Rename Node" class="text-gray-400 hover:text-white p-1 rounded hover:bg-white/10 text-xs transition">✎</button>
         </div>
         <div class="text-right">
           <div class="text-2xl font-extrabold text-white font-mono tracking-tight" id="sidebar-total">0</div>
-          <div class="text-[10px] text-gray-400 font-mono" id="sidebar-unit">TOTAL UNITS</div>
+          <div class="text-[10px] text-gray-400 font-mono uppercase tracking-wider">TOTAL VALUE</div>
         </div>
       </div>
 
@@ -155,11 +154,11 @@
       </div>
       <div class="flex justify-between text-[10px] text-gray-400 font-mono">
         <span id="sidebar-share-parent">100% of parent</span>
-        <span id="sidebar-share-total">100% of total life</span>
+        <span id="sidebar-share-total">100% of total</span>
       </div>
     </div>
 
-    <!-- Children List (HTML5 Drag-and-Drop Reordering) -->
+    <!-- Children List -->
     <div class="px-5 py-3 text-[11px] font-bold uppercase tracking-wider text-gray-400 border-b border-borderDark/50 flex justify-between items-center">
       <span>Sub-Sections (<span id="child-count">0</span>)</span>
       <span class="text-[9px] text-gray-500 font-normal lowercase">drag to reorder</span>
@@ -171,39 +170,16 @@
 
     <!-- Footer: Quick Append Form -->
     <div class="p-4 border-t border-borderDark bg-black/30">
-      <form id="add-form" class="flex flex-col gap-2" onsubmit="handleCreateChild(event)">
-        <div class="flex gap-1.5">
-          <input type="text" id="new-child-icon" placeholder="🚀" maxlength="2" title="Emoji Icon"
-            class="w-10 bg-black/50 border border-borderDark rounded-lg text-center text-sm focus:outline-none focus:border-accent transition">
-          <input type="text" id="new-child-name" placeholder="New category name..." required
-            class="flex-1 bg-black/50 border border-borderDark rounded-lg px-3 py-1.5 text-xs text-white placeholder-gray-500 focus:outline-none focus:border-accent transition">
-        </div>
-        <div class="flex gap-1.5">
-          <input type="number" id="new-child-val" placeholder="Val" value="10" min="0" step="any"
-            class="w-20 bg-black/50 border border-borderDark rounded-lg px-2 py-1.5 text-xs text-white text-center font-mono focus:outline-none focus:border-accent transition">
-          <input type="text" id="new-child-unit" placeholder="Unit (e.g. hrs, pts)"
-            class="w-24 bg-black/50 border border-borderDark rounded-lg px-2 py-1.5 text-xs text-white placeholder-gray-500 focus:outline-none focus:border-accent transition">
-          <button type="submit"
-            class="flex-1 bg-accent hover:bg-blue-600 active:scale-95 text-white text-xs font-semibold py-1.5 rounded-lg transition shadow-glow shadow-accent/20">
-            + Append
-          </button>
-        </div>
+      <form id="add-form" class="flex gap-2" onsubmit="handleCreateChild(event)">
+        <input type="text" id="new-child-name" placeholder="New category name..." required
+          class="flex-1 bg-black/50 border border-borderDark rounded-lg px-3 py-1.5 text-xs text-white placeholder-gray-500 focus:outline-none focus:border-accent transition">
+        <input type="number" id="new-child-val" placeholder="Val" value="10" min="0" step="any"
+          class="w-16 bg-black/50 border border-borderDark rounded-lg px-2 py-1.5 text-xs text-white text-center font-mono focus:outline-none focus:border-accent transition">
+        <button type="submit"
+          class="bg-accent hover:bg-blue-600 active:scale-95 text-white text-xs font-semibold px-3 py-1.5 rounded-lg transition shadow-glow shadow-accent/20">
+          + Add
+        </button>
       </form>
-    </div>
-  </div>
-
-  <!-- COMMAND PALETTE MODAL (Ctrl+K) -->
-  <div id="cmd-palette-backdrop" class="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 hidden flex items-start justify-center pt-24 animate-fade-in" onclick="closeCommandPalette()">
-    <div class="w-[540px] bg-panel border border-borderDark rounded-2xl shadow-2xl overflow-hidden flex flex-col" onclick="event.stopPropagation()">
-      <div class="p-3.5 border-b border-borderDark flex items-center gap-3 bg-black/20">
-        <span class="text-gray-400 text-sm pl-2">🔍</span>
-        <input type="text" id="cmd-input" placeholder="Type a command or fuzzy search sections..."
-          class="w-full bg-transparent text-sm text-white placeholder-gray-500 focus:outline-none font-medium">
-        <kbd class="bg-white/10 px-2 py-0.5 rounded text-[10px] text-gray-400 font-mono">ESC</kbd>
-      </div>
-      <div id="cmd-results" class="max-h-80 overflow-y-auto p-2 space-y-1 divide-y divide-borderDark/30">
-        <!-- Dynamically generated -->
-      </div>
     </div>
   </div>
 
@@ -214,15 +190,12 @@
         <span class="text-accent">+</span> Add Child Node
       </button>
       <button onclick="ctxAction('rename')" class="w-full px-4 py-2 text-left hover:bg-white/10 flex items-center gap-2 text-gray-200">
-        <span>✎</span> Edit Name & Icon
+        <span>✎</span> Rename Section
       </button>
     </div>
     <div class="py-1">
       <button onclick="ctxAction('duplicate')" class="w-full px-4 py-2 text-left hover:bg-white/10 flex items-center gap-2 text-gray-200">
         <span>⧉</span> Duplicate Subtree
-      </button>
-      <button onclick="ctxAction('focus')" class="w-full px-4 py-2 text-left hover:bg-white/10 flex items-center gap-2 text-gray-200">
-        <span>◎</span> Isolate in Focus Mode
       </button>
     </div>
     <div class="py-1">
@@ -233,18 +206,79 @@
   </div>
 
   <script>
-    // --- 1. PERSISTENCE & SNAPSHOT ENGINE (Undo/Redo) ---
-    const DB_NAME = 'BaobabProDB';
-    const STORE_NAME = 'treeStore';
-    let dbInstance = null;
+    // --- 1. AMBIENT FLOATING PARTICLES CANVAS ---
+    const pCanvas = document.getElementById('particle-canvas');
+    const pCtx = pCanvas.getContext('2d');
+    let particles = [];
 
+    function initParticles() {
+      pCanvas.width = window.innerWidth;
+      pCanvas.height = window.innerHeight;
+      particles = [];
+      const count = Math.floor((window.innerWidth * window.innerHeight) / 25000);
+      for (let i = 0; i < Math.min(count, 55); i++) {
+        particles.push({
+          x: Math.random() * pCanvas.width,
+          y: Math.random() * pCanvas.height,
+          r: Math.random() * 1.8 + 0.6,
+          dx: (Math.random() - 0.5) * 0.35,
+          dy: (Math.random() - 0.5) * 0.35 - 0.15,
+          alpha: Math.random() * 0.35 + 0.1
+        });
+      }
+    }
+
+    function animateParticles() {
+      pCtx.clearRect(0, 0, pCanvas.width, pCanvas.height);
+      particles.forEach(p => {
+        p.x += p.dx;
+        p.y += p.dy;
+        if (p.x < 0) p.x = pCanvas.width;
+        if (p.x > pCanvas.width) p.x = 0;
+        if (p.y < 0) p.y = pCanvas.height;
+        if (p.y > pCanvas.height) p.y = 0;
+        pCtx.beginPath();
+        pCtx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+        pCtx.fillStyle = `rgba(59, 130, 246, ${p.alpha})`;
+        pCtx.fill();
+      });
+      requestAnimationFrame(animateParticles);
+    }
+    window.addEventListener('resize', initParticles);
+    initParticles();
+    animateParticles();
+
+    // --- 2. SIDEBAR TOGGLE & RESIZE ENGINE ---
+    let sidebarOpen = true;
+    function toggleSidebar() {
+      sidebarOpen = !sidebarOpen;
+      const sb = document.getElementById("sidebar");
+      const main = document.getElementById("main-content");
+      const text = document.getElementById("sidebar-toggle-text");
+
+      if (sidebarOpen) {
+        sb.classList.remove("translate-x-full");
+        main.style.marginRight = "380px";
+        text.innerText = "Hide Sidebar";
+      } else {
+        sb.classList.add("translate-x-full");
+        main.style.marginRight = "0px";
+        text.innerText = "Show Sidebar";
+      }
+      setTimeout(() => renderSunburst(), 310);
+    }
+
+    // --- 3. PERSISTENCE ENGINE ---
+    const DB_NAME = 'BaobabProDB';
+    const STORE_NAME = 'treeStoreV2';
+    let dbInstance = null;
     let historyStack = [];
     let redoStack = [];
     const MAX_HISTORY = 40;
 
     async function initDB() {
       return new Promise((resolve) => {
-        const req = indexedDB.open(DB_NAME, 2);
+        const req = indexedDB.open(DB_NAME, 3);
         req.onupgradeneeded = (e) => {
           const db = e.target.result;
           if (!db.objectStoreNames.contains(STORE_NAME)) db.createObjectStore(STORE_NAME);
@@ -258,15 +292,14 @@
       if (pushHistory) {
         historyStack.push(JSON.stringify(treeData));
         if (historyStack.length > MAX_HISTORY) historyStack.shift();
-        redoStack = []; // Clear redo on new action
+        redoStack = [];
         updateUndoRedoButtons();
       }
-
       if (dbInstance) {
         const tx = dbInstance.transaction(STORE_NAME, 'readwrite');
         tx.objectStore(STORE_NAME).put(treeData, 'rootTree');
       } else {
-        localStorage.setItem('baobab_pro_tree', JSON.stringify(treeData));
+        localStorage.setItem('BaobabV2_tree', JSON.stringify(treeData));
       }
       showSaveIndicator();
     }
@@ -301,32 +334,26 @@
       window._saveTimer = setTimeout(() => ind.style.opacity = '0', 1800);
     }
 
-    // --- 2. DEFAULT TREE SCHEMA ---
+    // --- 4. REQUESTED PLACEHOLDER SCHEMA ---
     const defaultData = {
-      id: "root", name: "Total", icon: "🌌", unit: "pts", color: "#3b82f6",
+      id: "root", name: "Total", color: "#3b82f6",
       children: [
         {
-          id: "prog", name: "Programming & Dev", icon: "💻", unit: "hrs", color: "#3b82f6", // Blue
+          id: "top_a", name: "Topic A", color: "#3b82f6",
           children: [
-            { id: "py", name: "Python Algorithms", icon: "🐍", value: 84, unit: "problems" },
-            { id: "godot", name: "Godot Engine Games", icon: "🎮", value: 42, unit: "hrs" },
-            { id: "sys", name: "Linux Arch Setup", icon: "🐧", value: 18, unit: "tasks" }
+            { id: "a_1", name: "Task 1", value: 10 },
+            { id: "a_2", name: "Task 2", value: 20 },
+            { id: "a_3", name: "Task 3", value: 15 },
+            { id: "a_4", name: "Task 4", value: 25 }
           ]
         },
         {
-          id: "fit", name: "Strength & Fitness", icon: "🏋️", unit: "sessions", color: "#10b981", // Green
+          id: "top_b", name: "Topic B", color: "#10b981",
           children: [
-            { id: "upper", name: "Upper Body Split", icon: "💪", value: 24, unit: "days" },
-            { id: "lower", name: "Lower Body Heavy", icon: "🦵", value: 18, unit: "days" },
-            { id: "run", name: "Cardio Conditioning", icon: "🏃", value: 12, unit: "km" }
-          ]
-        },
-        {
-          id: "learn", name: "Academic & Study", icon: "📚", unit: "chapters", color: "#8b5cf6", // Purple
-          children: [
-            { id: "sat", name: "SAT Prep Timeline", icon: "📝", value: 65, unit: "%" },
-            { id: "math", name: "Calculus & Linear Alg", icon: "📐", value: 30, unit: "hrs" },
-            { id: "led", name: "Physics LED Project", icon: "💡", value: 100, unit: "%" }
+            { id: "b_1", name: "Task 1", value: 30 },
+            { id: "b_2", name: "Task 2", value: 15 },
+            { id: "b_3", name: "Task 3", value: 20 },
+            { id: "b_4", name: "Task 4", value: 35 }
           ]
         }
       ]
@@ -335,10 +362,8 @@
     let treeData = defaultData;
     let currentFocusId = "root";
     let selectedNodeId = "root";
-    let focusMode = false;
     let ctxTargetId = null;
 
-    // Zoom & Navigation History
     let navStack = ["root"];
     let navIdx = 0;
 
@@ -364,7 +389,7 @@
       document.getElementById('btn-fwd').disabled = navIdx >= navStack.length - 1;
     }
 
-    // --- 3. D3 SUNBURST WITH SVG GRADIENT ENGINE ---
+    // --- 5. D3 SUNBURST ENGINE WITH HOVER TOOLTIPS ---
     const baseHues = ["#3b82f6", "#10b981", "#8b5cf6", "#f59e0b", "#ec4899", "#06b6d4"];
     function getSectorColors(d) {
       if (d.depth === 0) return { fill: "#18181c", stroke: "#262630" };
@@ -385,7 +410,7 @@
       return { fill: c.toString(), end: gradientEnd.toString() };
     }
 
-    const container = document.getElementById('canvas-container');
+    const container = document.getElementById('main-content');
     let width = Math.min(container.clientWidth, container.clientHeight) * 0.92;
     let radius = width / 6;
 
@@ -393,10 +418,7 @@
       .attr("viewBox", `-${width / 2} -${width / 2} ${width} ${width}`)
       .attr("class", "w-full h-full max-w-5xl max-h-5xl drop-shadow-2xl overflow-visible");
 
-    // Defs for Dynamic Gradients & Shadows
     const defs = svg.append("defs");
-
-    // Camera Zoom Group (for mousewheel pan/zoom infinite canvas feeling)
     const cameraGroup = svg.append("g").attr("id", "camera-group");
 
     const zoomBehavior = d3.zoom()
@@ -449,14 +471,17 @@
         .on("click", () => {
           const cur = findD3Node(currentFocusId);
           if (cur && cur.parent) focusOn(cur.parent.data.id);
+        })
+        .on("contextmenu", (event) => {
+          event.preventDefault(); event.stopPropagation();
+          selectNode("root");
+          showContextMenu(event.pageX, event.pageY, "root");
         });
 
-      centerDisc.append("text").attr("class", "center-icon text-3xl text-anchor-middle").attr("text-anchor", "middle").attr("dy", "-1.1em");
-      centerDisc.append("text").attr("class", "center-title text-sm font-bold fill-white text-anchor-middle tracking-tight").attr("text-anchor", "middle").attr("dy", "0.1em");
-      centerDisc.append("text").attr("class", "center-val text-lg font-mono font-extrabold fill-accent text-anchor-middle").attr("text-anchor", "middle").attr("dy", "1.4em");
-      centerDisc.append("text").attr("class", "center-sub text-[9px] uppercase tracking-widest fill-gray-400 text-anchor-middle").attr("text-anchor", "middle").attr("dy", "3.6em");
+      centerDisc.append("text").attr("class", "center-title text-base font-bold fill-white text-anchor-middle tracking-tight").attr("text-anchor", "middle").attr("dy", "-0.6em");
+      centerDisc.append("text").attr("class", "center-val text-2xl font-mono font-extrabold fill-accent text-anchor-middle").attr("text-anchor", "middle").attr("dy", "0.7em");
+      centerDisc.append("text").attr("class", "center-sub text-[9px] uppercase tracking-widest fill-gray-400 text-anchor-middle").attr("text-anchor", "middle").attr("dy", "3.2em");
 
-      // Render Sectors with Gradients
       const nodes = root.descendants().slice(1);
 
       nodes.forEach(d => {
@@ -468,16 +493,35 @@
         d.gradId = gradId;
       });
 
+      const tooltip = document.getElementById("tooltip");
+
       path = cameraGroup.append("g")
         .selectAll("path")
         .data(nodes)
         .join("path")
         .attr("id", d => `arc-${d.data.id}`)
-        .attr("class", d => `sector ${focusMode && !isDescendant(findD3Node(currentFocusId), d) ? 'dimmed' : ''}`)
+        .attr("class", "sector")
         .attr("fill", d => `url(#${d.gradId})`)
         .attr("stroke", "#09090b")
         .attr("stroke-width", 1.5)
         .attr("d", d => arc(d.current || d))
+        .on("mousemove", (event, p) => {
+          tooltip.classList.remove("hidden");
+          tooltip.style.left = `${Math.min(event.pageX + 15, window.innerWidth - 180)}px`;
+          tooltip.style.top = `${Math.min(event.pageY + 15, window.innerHeight - 80)}px`;
+
+          const parentVal = p.parent ? p.parent.value : p.value;
+          const share = parentVal > 0 ? ((p.value / parentVal) * 100).toFixed(1) : "100";
+
+          tooltip.innerHTML = `
+            <div class="font-bold text-white text-sm">${p.data.name}</div>
+            <div class="text-gray-300 font-mono mt-1 flex justify-between gap-4">
+              <span>Value:</span> <strong class="text-accent">${p.value || 0}</strong>
+            </div>
+            <div class="text-[10px] text-gray-400 font-mono mt-0.5">${share}% of ${p.parent.data.name}</div>
+          `;
+        })
+        .on("mouseleave", () => tooltip.classList.add("hidden"))
         .on("click", (event, p) => {
           event.stopPropagation();
           selectNode(p.data.id);
@@ -498,22 +542,14 @@
     }
 
     function isVisible(d) { return d.y1 <= 4 && d.y0 >= 1 && d.x1 > d.x0; }
-    function isDescendant(parent, node) {
-      if (!parent) return true;
-      let curr = node;
-      while (curr) { if (curr === parent) return true; curr = curr.parent; }
-      return false;
-    }
 
     function updateChartState(p, animate = true, pushNav = true) {
       currentFocusId = p.data.id;
       if (pushNav) pushNavHistory(p.data.id);
 
-      // Update Dashboard Center Disc
-      svg.select(".center-icon").text(p.data.icon || "🪐");
-      svg.select(".center-title").text(p.data.name.length > 15 ? p.data.name.slice(0, 14) + '…' : p.data.name);
-      svg.select(".center-val").text(`${p.value || 0} ${p.data.unit || 'pts'}`);
-      svg.select(".center-sub").text(p.depth === 0 ? `root • ${p.children ? p.children.length : 0} branches` : "▲ click disc to zoom out");
+      svg.select(".center-title").text(p.data.name.length > 18 ? p.data.name.slice(0, 17) + '…' : p.data.name);
+      svg.select(".center-val").text(p.value || 0);
+      svg.select(".center-sub").text(p.depth === 0 ? `root • ${p.children ? p.children.length : 0} topics` : "▲ click disc to zoom out");
 
       const t = cameraGroup.transition().duration(animate ? 700 : 0).ease(d3.easeCubicOut);
 
@@ -536,7 +572,6 @@
         .attr("pointer-events", d => isVisible(d.target) ? "auto" : "none")
         .attrTween("d", d => () => arc(d.current));
 
-      // Re-project Labels
       labelGroup.selectAll("text").remove();
       const visibleNodes = root.descendants().slice(1).filter(d => isVisible(d.target) && (d.target.x1 - d.target.x0) > 0.14);
 
@@ -553,7 +588,7 @@
         .attr("dy", "0.3em")
         .text(d => {
           const ang = d.target.x1 - d.target.x0;
-          const label = `${d.data.icon || ''} ${d.data.name}`;
+          const label = d.data.name;
           if (ang < 0.28 && label.length > 9) return label.slice(0, 8) + '…';
           return `${label} (${d.value || 0})`;
         });
@@ -574,27 +609,15 @@
       updateUI();
     }
 
-    function toggleFocusMode() {
-      focusMode = !focusMode;
-      document.getElementById("focus-text").innerText = focusMode ? "Focus On" : "Focus Off";
-      document.getElementById("btn-focus").classList.toggle("border-accent", focusMode);
-      document.getElementById("btn-focus").classList.toggle("text-accent", focusMode);
-
-      const target = findD3Node(currentFocusId);
-      path.attr("class", d => `sector ${focusMode && !isDescendant(target, d) ? 'dimmed' : ''}`);
-    }
-
-    // --- 4. PRO INSPECTOR & HTML5 DRAG AND DROP ---
+    // --- 6. PRO INSPECTOR & RENAMING ENGINE ---
     function updateUI() {
       const d3Focus = findD3Node(currentFocusId) || root;
       const d3Selected = findD3Node(selectedNodeId) || d3Focus;
       const rawNode = findRawNode(treeData, selectedNodeId) || treeData;
 
       document.getElementById("sidebar-depth-label").innerText = d3Selected.depth === 0 ? "Root Overview" : `Level ${d3Selected.depth} • ${d3Selected.parent.data.name}`;
-      document.getElementById("sidebar-icon").innerText = rawNode.icon || "📁";
       document.getElementById("sidebar-title").innerText = rawNode.name;
 
-      // Odometer effect on total value
       const totalEl = document.getElementById("sidebar-total");
       if (totalEl.innerText !== String(d3Selected.value || 0)) {
         totalEl.classList.remove("animate-odo");
@@ -603,24 +626,20 @@
         totalEl.classList.add("animate-odo");
       }
 
-      document.getElementById("sidebar-unit").innerText = (rawNode.unit || "pts").toUpperCase();
-
-      // Proportional Shares
       const parentVal = d3Selected.parent ? d3Selected.parent.value : d3Selected.value;
       const shareParent = parentVal > 0 ? ((d3Selected.value / parentVal) * 100).toFixed(1) : "100";
       const shareTotal = root.value > 0 ? ((d3Selected.value / root.value) * 100).toFixed(1) : "100";
 
       document.getElementById("sidebar-progress-bar").style.width = `${shareParent}%`;
       document.getElementById("sidebar-share-parent").innerText = d3Selected.depth === 0 ? "100% of parent" : `${shareParent}% of parent (${d3Selected.parent.data.name})`;
-      document.getElementById("sidebar-share-total").innerText = `${shareTotal}% of entire tree`;
+      document.getElementById("sidebar-share-total").innerText = `${shareTotal}% of total`;
 
-      // Breadcrumbs
       const bcEl = document.getElementById("breadcrumbs");
       bcEl.innerHTML = "";
       d3Selected.ancestors().reverse().forEach((anc, i, arr) => {
         const btn = document.createElement("button");
         btn.className = `hover:text-accent font-medium flex items-center gap-1 transition ${anc.data.id === selectedNodeId ? 'text-white underline font-bold decoration-accent decoration-2' : 'text-gray-400'}`;
-        btn.innerHTML = `<span>${anc.data.icon || ''}</span> <span>${anc.data.name}</span>`;
+        btn.innerText = anc.data.name;
         btn.onclick = () => focusOn(anc.data.id);
         bcEl.appendChild(btn);
 
@@ -632,7 +651,6 @@
         }
       });
 
-      // Render Children
       const container = document.getElementById("children-container");
       container.innerHTML = "";
       const children = rawNode.children || [];
@@ -642,7 +660,6 @@
         container.innerHTML = `
           <div class="text-center py-10 border border-dashed border-borderDark rounded-xl text-gray-500 bg-black/20">
             <p class="text-xs">No children in this branch.</p>
-            <p class="text-[10px] mt-1 text-gray-600">Use form below or press <kbd class="bg-white/10 px-1 rounded">A</kbd> to append.</p>
           </div>`;
       } else {
         children.forEach((child, idx) => {
@@ -650,7 +667,6 @@
           el.className = "group bg-panel border border-borderDark hover:border-gray-500/80 rounded-xl p-3 flex items-center justify-between gap-3 shadow-md transition cursor-pointer select-none relative overflow-hidden";
           el.draggable = true;
 
-          // Drag and Drop Events
           el.ondragstart = (e) => {
             e.dataTransfer.setData("text/plain", JSON.stringify({ parentId: rawNode.id, index: idx }));
             el.classList.add("opacity-40");
@@ -665,8 +681,7 @@
             if (data.parentId === rawNode.id && data.index !== idx) {
               const [moved] = rawNode.children.splice(data.index, 1);
               rawNode.children.splice(idx, 0, moved);
-              saveState();
-              renderSunburst();
+              saveState(); renderSunburst();
             }
           };
 
@@ -679,11 +694,10 @@
           el.innerHTML = `
             <div class="flex items-center gap-2.5 flex-1 overflow-hidden">
               <span class="text-gray-600 group-hover:text-gray-400 cursor-grab text-[10px]" title="Drag to reorder">⠿</span>
-              <span class="text-base">${child.icon || '📌'}</span>
               <div class="flex-1 overflow-hidden">
                 <div class="text-xs font-semibold text-gray-200 group-hover:text-white truncate transition">${child.name}</div>
                 <div class="text-[10px] text-gray-400 font-mono flex items-center gap-2">
-                  <span>val: <strong class="text-white">${displayVal}</strong> ${child.unit || rawNode.unit || 'pts'}</span>
+                  <span>val: <strong class="text-white">${displayVal}</strong></span>
                   ${!isLeaf ? `<span class="bg-white/10 px-1 rounded text-[9px] text-gray-300">${child.children.length} sub</span>` : ''}
                 </div>
               </div>
@@ -699,7 +713,6 @@
             </div>
           `;
 
-          // Attach hold-to-repeat increment auto-acceleration
           const btns = el.querySelectorAll("button[title='Hold to repeat']");
           setupHoldToRepeat(btns[0], () => quickInc(child.id, -1));
           setupHoldToRepeat(btns[1], () => quickInc(child.id, 1));
@@ -709,7 +722,6 @@
       }
     }
 
-    // Hold-to-repeat acceleration
     function setupHoldToRepeat(btn, actionFn) {
       let timer, delay = 300, interval = 150;
       const start = (e) => {
@@ -731,12 +743,11 @@
       const node = findRawNode(treeData, id);
       if (!node) return;
       if (node.children && node.children.length > 0) {
-        alert("Cannot increment a parent branch directly. Change its sub-sections!");
+        alert("Cannot increment a parent branch directly. Modify its sub-sections!");
         return;
       }
       node.value = Math.max(0, (Number(node.value) || 0) + delta);
 
-      // Trigger parent pulse glow on ancestor SVG arcs
       const d3Node = findD3Node(id);
       if (d3Node) {
         d3Node.ancestors().forEach(anc => {
@@ -749,117 +760,80 @@
         });
       }
 
-      saveState();
-      renderSunburst();
+      saveState(); renderSunburst();
     }
 
-    // --- 5. COMMAND PALETTE (Ctrl+K) & FUZZY SEARCH ---
+    function renameCurrentNode() {
+      const target = findRawNode(treeData, selectedNodeId);
+      if (!target) return;
+      const newName = prompt("Rename section:", target.name);
+      if (newName !== null && newName.trim() !== "") {
+        target.name = newName.trim();
+        saveState(); renderSunburst();
+      }
+    }
+
+    // --- 7. SIDEBAR INLINE SEARCH ---
     let searchHighlightTimer = null;
-
-    function openCommandPalette() {
-      const modal = document.getElementById("cmd-palette-backdrop");
-      const input = document.getElementById("cmd-input");
-      modal.classList.remove("hidden");
-      input.value = "";
-      input.focus();
-      renderCmdResults("");
+    function toggleSidebarSearch() {
+      const box = document.getElementById("sidebar-search-box");
+      const input = document.getElementById("sidebar-search-input");
+      box.classList.toggle("hidden");
+      if (!box.classList.contains("hidden")) {
+        box.classList.add("flex");
+        input.value = "";
+        input.focus();
+        filterSidebarSearch("");
+      } else {
+        box.classList.remove("flex");
+        svg.selectAll("path.sector").classed("search-highlight", false);
+      }
     }
 
-    function closeCommandPalette() {
-      document.getElementById("cmd-palette-backdrop").classList.add("hidden");
-    }
-
-    document.getElementById("cmd-input").addEventListener("input", (e) => {
-      renderCmdResults(e.target.value);
+    document.getElementById("sidebar-search-input").addEventListener("input", (e) => {
+      filterSidebarSearch(e.target.value);
     });
 
-    function renderCmdResults(query) {
-      const container = document.getElementById("cmd-results");
-      container.innerHTML = "";
+    function filterSidebarSearch(query) {
+      const resultsContainer = document.getElementById("sidebar-search-results");
+      resultsContainer.innerHTML = "";
       const q = query.toLowerCase().trim();
+      if (!q) return;
 
-      // System Commands
-      const commands = [
-        { icon: "◎", title: "Toggle Focus Mode", sub: "Dim unselected branches", action: () => { toggleFocusMode(); closeCommandPalette(); } },
-        { icon: "↩", title: "Undo Last Action", sub: "Restore previous state snapshot", action: () => { undo(); closeCommandPalette(); } },
-        { icon: "⌖", title: "Reset Camera View", sub: "Center and unzoom infinite canvas", action: () => { resetCamera(); closeCommandPalette(); } },
-        { icon: "💾", title: "Export Backup JSON", sub: "Download current state as file", action: () => { exportJSON(); closeCommandPalette(); } }
-      ];
-
-      // Fuzzy search tree nodes
       const allNodes = [];
       root.each(d => allNodes.push(d));
+      const matches = allNodes.filter(d => d.data.name.toLowerCase().includes(q));
 
-      const matchedNodes = allNodes.filter(d =>
-        !q || d.data.name.toLowerCase().includes(q) || (d.data.icon && d.data.icon.includes(q))
-      );
-
-      const matchedCmds = commands.filter(c => !q || c.title.toLowerCase().includes(q));
-
-      // Render commands first if query matches
-      if (matchedCmds.length > 0) {
-        const hdr = document.createElement("div");
-        hdr.className = "text-[10px] font-bold text-gray-500 uppercase px-3 pt-2 pb-1 tracking-wider";
-        hdr.innerText = "System Commands";
-        container.appendChild(hdr);
-
-        matchedCmds.forEach(cmd => {
-          const el = document.createElement("div");
-          el.className = "p-2.5 hover:bg-white/10 rounded-xl flex items-center justify-between cursor-pointer transition text-xs";
-          el.innerHTML = `
-            <div class="flex items-center gap-3">
-              <span class="text-base text-accent">${cmd.icon}</span>
-              <div>
-                <div class="font-semibold text-white">${cmd.title}</div>
-                <div class="text-[10px] text-gray-400">${cmd.sub}</div>
-              </div>
-            </div>
-            <kbd class="bg-white/5 border border-white/10 px-1.5 py-0.5 rounded text-[9px] text-gray-400 font-mono">Execute</kbd>
-          `;
-          el.onclick = cmd.action;
-          container.appendChild(el);
-        });
+      if (matches.length === 0) {
+        resultsContainer.innerHTML = `<div class="p-2 text-gray-500 text-center">No matching sections found.</div>`;
+        return;
       }
 
-      // Render matched nodes
-      if (matchedNodes.length > 0) {
-        const hdr = document.createElement("div");
-        hdr.className = "text-[10px] font-bold text-gray-500 uppercase px-3 pt-3 pb-1 tracking-wider";
-        hdr.innerText = `Nodes & Sections (${matchedNodes.length})`;
-        container.appendChild(hdr);
-
-        matchedNodes.slice(0, 15).forEach(d => {
-          const el = document.createElement("div");
-          el.className = "p-2 hover:bg-white/10 rounded-xl flex items-center justify-between cursor-pointer transition text-xs";
-          el.innerHTML = `
-            <div class="flex items-center gap-2.5 overflow-hidden">
-              <span class="text-base">${d.data.icon || '📁'}</span>
-              <div class="truncate">
-                <span class="font-medium text-gray-200">${d.data.name}</span>
-                <span class="text-[10px] text-gray-500 ml-1.5 font-mono">val: ${d.value || 0}</span>
-              </div>
-            </div>
-            <span class="text-[10px] text-gray-400 bg-black/40 px-2 py-0.5 rounded-md border border-borderDark font-mono">Level ${d.depth}</span>
-          `;
-          el.onclick = () => {
-            focusOn(d.data.id);
-            closeCommandPalette();
-
-            // Search highlight glow
-            svg.selectAll("path.sector").classList?.remove("search-highlight");
-            const targetArc = document.getElementById(`arc-${d.data.id}`);
-            if (targetArc) {
-              targetArc.classList.add("search-highlight");
-              clearTimeout(searchHighlightTimer);
-              searchHighlightTimer = setTimeout(() => targetArc.classList.remove("search-highlight"), 2500);
-            }
-          };
-          container.appendChild(el);
-        });
-      }
+      matches.slice(0, 10).forEach(d => {
+        const el = document.createElement("div");
+        el.className = "p-2 hover:bg-white/10 rounded-lg flex items-center justify-between cursor-pointer transition";
+        el.innerHTML = `
+          <div class="truncate">
+            <span class="text-white font-medium">${d.data.name}</span>
+            <span class="text-[10px] text-gray-400 font-mono ml-1.5">val: ${d.value || 0}</span>
+          </div>
+          <span class="text-[9px] bg-black/40 px-1.5 py-0.5 rounded text-gray-400 font-mono">Lvl ${d.depth}</span>
+        `;
+        el.onclick = () => {
+          focusOn(d.data.id);
+          svg.selectAll("path.sector").classed("search-highlight", false);
+          const targetArc = document.getElementById(`arc-${d.data.id}`);
+          if (targetArc) {
+            targetArc.classList.add("search-highlight");
+            clearTimeout(searchHighlightTimer);
+            searchHighlightTimer = setTimeout(() => targetArc.classList.remove("search-highlight"), 2500);
+          }
+        };
+        resultsContainer.appendChild(el);
+      });
     }
 
-    // --- 6. NODE OPERATIONS & TREE HELPER ALGORITHMS ---
+    // --- 8. NODE HELPER ALGORITHMS ---
     function findD3Node(id) {
       if (!root) return null;
       return root.descendants().find(d => d.data.id === id);
@@ -891,23 +865,18 @@
       const parent = findRawNode(treeData, selectedNodeId);
       if (!parent) return;
 
-      const icon = document.getElementById("new-child-icon").value.trim() || "📌";
       const name = document.getElementById("new-child-name").value.trim();
       const val = parseFloat(document.getElementById("new-child-val").value) || 0;
-      const unit = document.getElementById("new-child-unit").value.trim() || parent.unit || "pts";
 
       if (!parent.children) parent.children = [];
-
       const newId = "node_" + Math.random().toString(36).substr(2, 7);
-      parent.children.push({ id: newId, name, icon, value: val, unit });
+      parent.children.push({ id: newId, name, value: val });
 
       document.getElementById("new-child-name").value = "";
-      saveState();
-      renderSunburst();
+      saveState(); renderSunburst();
       focusOn(selectedNodeId);
     }
 
-    // Context & Inline Actions
     function showContextMenu(x, y, id) {
       ctxTargetId = id;
       const menu = document.getElementById("context-menu");
@@ -931,11 +900,8 @@
         selectNode(ctxTargetId);
         document.getElementById("new-child-name").focus();
       } else if (type === 'rename') {
-        const newName = prompt("New Name:", target.name);
-        if (newName !== null) target.name = newName.trim() || target.name;
-        const newIcon = prompt("New Emoji Icon:", target.icon || "📌");
-        if (newIcon !== null) target.icon = newIcon.trim() || target.icon;
-        saveState(); renderSunburst();
+        selectNode(ctxTargetId);
+        renameCurrentNode();
       } else if (type === 'duplicate') {
         const parent = findParentRaw(treeData, ctxTargetId);
         if (parent && parent.children) {
@@ -945,10 +911,8 @@
           parent.children.push(clone);
           saveState(); renderSunburst();
         }
-      } else if (type === 'focus') {
-        focusOn(ctxTargetId);
       } else if (type === 'delete') {
-        if (ctxTargetId === 'root') { alert("Cannot delete Total root!"); return; }
+        if (ctxTargetId === 'root') { alert("Cannot delete the Root node!"); return; }
         if (confirm(`Delete branch "${target.name}" and all sub-sections?`)) {
           const parent = findParentRaw(treeData, ctxTargetId);
           if (parent) {
@@ -969,18 +933,12 @@
       dl.click();
     }
 
-    // --- 7. GLOBAL EVENT LISTENERS & HOTKEYS ---
+    // --- 9. EVENT LISTENERS & INIT ---
     window.addEventListener("click", () => {
       document.getElementById("context-menu").classList.add("hidden");
     });
 
     window.addEventListener("keydown", (e) => {
-      // Command Palette Trigger (Ctrl+K or Cmd+K)
-      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
-        e.preventDefault();
-        openCommandPalette();
-      }
-      // Undo/Redo Shortcuts
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
         e.preventDefault();
         if (e.shiftKey) redo(); else undo();
@@ -989,32 +947,24 @@
         e.preventDefault();
         redo();
       }
-      // Quick Add shortcut (Press 'A' outside inputs)
-      if (e.key.toLowerCase() === 'a' && document.activeElement.tagName !== 'INPUT') {
-        e.preventDefault();
-        document.getElementById("new-child-name").focus();
-      }
-      // Escape closes command palette
       if (e.key === 'Escape') {
-        closeCommandPalette();
         document.getElementById("context-menu").classList.add("hidden");
       }
     });
 
     window.addEventListener("resize", () => renderSunburst());
 
-    // --- 8. INIT APP ---
     initDB().then(() => {
       if (dbInstance) {
         const tx = dbInstance.transaction(STORE_NAME, 'readonly');
         const req = tx.objectStore(STORE_NAME).get('rootTree');
         req.onsuccess = () => {
           if (req.result) treeData = req.result;
-          else if (localStorage.getItem('baobab_pro_tree')) treeData = JSON.parse(localStorage.getItem('baobab_pro_tree'));
+          else if (localStorage.getItem('BaobabV2_tree')) treeData = JSON.parse(localStorage.getItem('BaobabV2_tree'));
           renderSunburst();
         };
       } else {
-        if (localStorage.getItem('baobab_pro_tree')) treeData = JSON.parse(localStorage.getItem('baobab_pro_tree'));
+        if (localStorage.getItem('BaobabV2_tree')) treeData = JSON.parse(localStorage.getItem('BaobabV2_tree'));
         renderSunburst();
       }
     });
