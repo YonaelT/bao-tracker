@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Baobab — Hierarchical Progress Map</title>
+  <title>Baobab Pro — Interactive Progress Map</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://d3js.org/d3.v7.min.js"></script>
   <script>
@@ -12,230 +12,321 @@
       theme: {
         extend: {
           colors: {
-            canvas: '#0a0a0c',
-            panel: '#121216',
-            borderDark: '#22222b',
+            canvas: '#09090b',
+            panel: '#121215',
+            borderDark: '#22222a',
             accent: '#3b82f6',
           },
           boxShadow: {
-            'glass': '0 8px 32px 0 rgba(0, 0, 0, 0.37)',
-            'glow': '0 0 20px -5px var(--tw-shadow-color)',
+            'glass': '0 8px 32px 0 rgba(0, 0, 0, 0.45)',
+            'glow': '0 0 25px -5px var(--tw-shadow-color)',
           }
         }
       }
     }
   </script>
   <style>
-    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;600;800&display=swap');
 
     * { font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif; }
+    .font-mono { font-family: 'JetBrains Mono', monospace; }
 
-    /* Custom Scrollbar */
-    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar { width: 5px; height: 5px; }
     ::-webkit-scrollbar-track { background: transparent; }
-    ::-webkit-scrollbar-thumb { background: #2a2a35; border-radius: 9999px; }
-    ::-webkit-scrollbar-thumb:hover { background: #3e3e4f; }
+    ::-webkit-scrollbar-thumb { background: #262630; border-radius: 9999px; }
+    ::-webkit-scrollbar-thumb:hover { background: #3f3f50; }
 
-    /* Spring Animation for Number Increments */
-    @keyframes bounce-scale {
-      0%, 100% { transform: scale(1); }
-      50% { transform: scale(1.18); color: #60a5fa; }
+    /* Odometer & Ripple Animations */
+    @keyframes odometer-up {
+      0% { transform: translateY(10px); opacity: 0; }
+      100% { transform: translateY(0); opacity: 1; }
     }
-    .animate-bounce-short { animation: bounce-scale 0.25s cubic-bezier(0.175, 0.885, 0.32, 1.275); }
+    .animate-odo { animation: odometer-up 0.18s cubic-bezier(0.16, 1, 0.3, 1); }
 
-    /* D3 Arc Hover & Focus Transitions */
-    path.sector { transition: filter 0.2s ease, opacity 0.2s ease; cursor: pointer; }
-    path.sector:hover { filter: brightness(1.2) drop-shadow(0 0 8px rgba(255,255,255,0.15)); }
-    path.sector.selected { stroke: #ffffff !important; stroke-width: 2.5px !important; filter: brightness(1.25); }
+    @keyframes pulse-glow {
+      0%, 100% { filter: brightness(1); }
+      50% { filter: brightness(1.4) drop-shadow(0 0 12px rgba(255, 255, 255, 0.3)); }
+    }
+    .parent-pulse { animation: pulse-glow 0.6s ease-in-out; }
+
+    path.sector { transition: opacity 0.3s ease, stroke-width 0.2s ease; cursor: pointer; }
+    path.sector:hover { opacity: 0.88 !important; stroke: #ffffff !important; stroke-width: 2px !important; }
+    path.sector.search-highlight { stroke: #fbbf24 !important; stroke-width: 3px !important; filter: drop-shadow(0 0 10px #fbbf24); }
+    path.sector.dimmed { opacity: 0.15 !important; pointer-events: none; }
+
+    /* Ambient Background Grid & Floating Particles */
+    .bg-ambient {
+      background-image:
+        radial-gradient(circle at 50% 50%, rgba(59, 130, 246, 0.04) 0%, transparent 60%),
+        linear-gradient(rgba(255, 255, 255, 0.015) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255, 255, 255, 0.015) 1px, transparent 1px);
+      background-size: 100% 100%, 40px 40px, 40px 40px;
+    }
 
     .glass-panel {
-      background: rgba(18, 18, 22, 0.75);
-      backdrop-filter: blur(16px);
-      -webkit-backdrop-filter: blur(16px);
+      background: rgba(18, 18, 21, 0.82);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
     }
   </style>
 </head>
-<body class="bg-canvas text-gray-100 flex h-screen w-screen overflow-hidden select-none">
+<body class="bg-canvas text-gray-100 flex h-screen w-screen overflow-hidden select-none bg-ambient">
 
-  <!-- TOP BAR: Breadcrumbs & Search -->
-  <div class="absolute top-0 left-0 right-96 h-16 z-10 flex items-center justify-between px-6 pointer-events-none">
-    <!-- Breadcrumbs -->
-    <div id="breadcrumbs" class="flex items-center gap-1.5 bg-panel/90 border border-borderDark px-3.5 py-1.5 rounded-full shadow-lg backdrop-blur-md pointer-events-auto text-sm font-medium">
-      <!-- Populated dynamically -->
-    </div>
-
-    <!-- Search Bar -->
-    <div class="relative pointer-events-auto w-64">
-      <input type="text" id="search-input" placeholder="Search progress (e.g. alg)..."
-        class="w-full bg-panel/90 border border-borderDark rounded-full px-4 py-1.5 text-xs text-gray-200 placeholder-gray-500 focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent transition-all shadow-lg backdrop-blur-md">
-      <div id="search-results" class="absolute right-0 mt-2 w-72 bg-panel border border-borderDark rounded-xl shadow-2xl overflow-hidden hidden z-50 max-h-64 overflow-y-auto divide-y divide-borderDark/50"></div>
-    </div>
-  </div>
-
-  <!-- CENTER: D3 Zoomable Sunburst Canvas -->
-  <div class="flex-1 h-full relative flex items-center justify-center" id="canvas-container">
-    <div id="chart" class="w-full h-full flex items-center justify-center"></div>
-
-    <!-- Keyboard Hint Pill -->
-    <div class="absolute bottom-6 left-6 bg-panel/60 border border-borderDark/60 px-3 py-1 rounded-md text-[11px] text-gray-400 pointer-events-none backdrop-blur-sm flex items-center gap-3">
-      <span><kbd class="bg-white/10 px-1 rounded text-gray-300">↑↓</kbd> Nav</span>
-      <span><kbd class="bg-white/10 px-1 rounded text-gray-300">Space</kbd> / <kbd class="bg-white/10 px-1 rounded text-gray-300">+</kbd> Inc</span>
-      <span><kbd class="bg-white/10 px-1 rounded text-gray-300">Enter</kbd> Drill</span>
-      <span><kbd class="bg-white/10 px-1 rounded text-gray-300">Right-Click</kbd> Menu</span>
-    </div>
-  </div>
-
-  <!-- RIGHT SIDEBAR: Inspector & Controls -->
-  <div class="w-96 h-full glass-panel border-l border-borderDark flex flex-col z-20 shadow-2xl">
-
-    <!-- Header Node Info -->
-    <div class="p-6 border-b border-borderDark">
-      <div class="text-xs font-semibold uppercase tracking-wider text-accent mb-1" id="sidebar-depth-label">Root Level</div>
-      <div class="flex items-baseline justify-between">
-        <h1 class="text-2xl font-bold text-white tracking-tight truncate flex-1" id="sidebar-title">Entire Life</h1>
-        <div class="text-3xl font-extrabold text-white font-mono tracking-tight ml-2" id="sidebar-total">0</div>
-      </div>
-    </div>
-
-    <!-- Stats Drawer Toggle / Bar -->
-    <div class="bg-white/[0.02] border-b border-borderDark px-6 py-2.5 flex items-center justify-between text-xs text-gray-400">
-      <span>Branches: <strong class="text-gray-200" id="stat-cats">0</strong></span>
-      <span>Deepest: <strong class="text-gray-200" id="stat-depth">0</strong></span>
-      <span>Avg Leaf: <strong class="text-gray-200" id="stat-avg">0</strong></span>
-    </div>
-
-    <!-- Children / Subsections List -->
-    <div class="flex-1 overflow-y-auto p-6 space-y-2.5" id="children-container">
-      <!-- Dynamic cards rendered here -->
-    </div>
-
-    <!-- Footer: Quick Add Section -->
-    <div class="p-5 border-t border-borderDark bg-black/20">
-      <div class="text-xs font-medium text-gray-400 mb-2 flex justify-between items-center">
-        <span>Append to Current Section</span>
-        <span class="text-[10px] text-gray-500">Auto-saves to IndexedDB</span>
-      </div>
-      <form id="add-form" class="flex gap-2" onsubmit="handleCreateChild(event)">
-        <input type="text" id="new-child-name" placeholder="Name (e.g. Physics)" required
-          class="flex-1 bg-black/40 border border-borderDark rounded-lg px-3 py-2 text-xs text-white placeholder-gray-500 focus:outline-none focus:border-accent transition">
-        <input type="number" id="new-child-val" placeholder="Val" value="10" min="0"
-          class="w-16 bg-black/40 border border-borderDark rounded-lg px-2 py-2 text-xs text-white text-center font-mono focus:outline-none focus:border-accent transition">
-        <button type="submit"
-          class="bg-accent hover:bg-blue-600 active:scale-95 text-white text-xs font-semibold px-3.5 py-2 rounded-lg transition shadow-glow shadow-accent/20">
-          + Add
+  <!-- TOP NAVIGATION & COMMAND BAR -->
+  <div class="absolute top-4 left-6 right-[400px] h-12 z-20 flex items-center justify-between pointer-events-none gap-4">
+    <!-- Zoom History & Breadcrumbs -->
+    <div class="flex items-center gap-2 pointer-events-auto">
+      <div class="flex bg-panel/90 border border-borderDark rounded-lg p-1 shadow-lg backdrop-blur-md">
+        <button onclick="navHistory(-1)" id="btn-back" title="Back (Alt+Left)" class="p-1.5 hover:bg-white/10 rounded text-gray-400 hover:text-white disabled:opacity-30 disabled:pointer-events-none transition">
+          ◀
         </button>
+        <button onclick="navHistory(1)" id="btn-fwd" title="Forward (Alt+Right)" class="p-1.5 hover:bg-white/10 rounded text-gray-400 hover:text-white disabled:opacity-30 disabled:pointer-events-none transition">
+          ▶
+        </button>
+      </div>
+
+      <div id="breadcrumbs" class="flex items-center gap-1.5 bg-panel/90 border border-borderDark px-4 py-2 rounded-lg shadow-lg backdrop-blur-md text-xs font-semibold tracking-wide overflow-x-auto max-w-xl">
+        <!-- Dynamically populated -->
+      </div>
+    </div>
+
+    <!-- Quick Actions & Command Palette Trigger -->
+    <div class="flex items-center gap-2 pointer-events-auto">
+      <button onclick="toggleFocusMode()" id="btn-focus" title="Toggle Focus Mode"
+        class="bg-panel/90 border border-borderDark hover:border-gray-500 px-3 py-2 rounded-lg text-xs font-medium text-gray-300 hover:text-white transition shadow-lg flex items-center gap-1.5 backdrop-blur-md">
+        <span>◎</span> <span id="focus-text">Focus Off</span>
+      </button>
+
+      <button onclick="openCommandPalette()"
+        class="bg-panel/90 border border-borderDark hover:border-accent px-3.5 py-2 rounded-lg text-xs font-medium text-gray-400 hover:text-white transition shadow-lg flex items-center gap-3 backdrop-blur-md">
+        <span class="flex items-center gap-1 text-gray-300">🔍 Search or Command...</span>
+        <kbd class="bg-white/10 border border-white/10 px-1.5 py-0.5 rounded text-[10px] text-gray-300 font-mono">Ctrl K</kbd>
+      </button>
+    </div>
+  </div>
+
+  <!-- CENTER: D3 INFINITE CANVAS & SUNBURST -->
+  <div class="flex-1 h-full relative overflow-hidden" id="canvas-container">
+    <div id="chart" class="w-full h-full cursor-grab active:cursor-grabbing"></div>
+
+    <!-- Camera Reset Button (Appears when panned/zoomed via scrollwheel) -->
+    <button id="btn-reset-cam" onclick="resetCamera()"
+      class="absolute bottom-6 right-6 bg-panel/90 border border-borderDark hover:border-accent px-3 py-1.5 rounded-lg text-xs text-gray-300 hover:text-white shadow-xl backdrop-blur-md hidden pointer-events-auto transition">
+      ⌖ Reset Camera View
+    </button>
+
+    <!-- Autosave & State Indicator -->
+    <div class="absolute bottom-6 left-6 flex items-center gap-2 pointer-events-none">
+      <div id="save-indicator" class="bg-panel/80 border border-borderDark/80 px-3 py-1.5 rounded-md text-[11px] text-gray-400 backdrop-blur-sm flex items-center gap-2 transition-opacity duration-300 opacity-0">
+        <span class="w-2 h-2 rounded-full bg-green-500 animate-pulse"></span>
+        <span>State Snapshot Saved</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- RIGHT SIDEBAR: PRO INSPECTOR & DRAG-AND-DROP EDITOR -->
+  <div class="w-[380px] h-full glass-panel border-l border-borderDark flex flex-col z-20 shadow-2xl relative">
+
+    <!-- Top Bar: Undo/Redo & Node Metadata -->
+    <div class="p-5 border-b border-borderDark bg-black/20 flex flex-col gap-3">
+      <div class="flex items-center justify-between text-xs text-gray-400 font-medium">
+        <span id="sidebar-depth-label" class="text-accent uppercase tracking-wider font-bold">Root Level</span>
+        <div class="flex items-center gap-1">
+          <button onclick="undo()" id="btn-undo" title="Undo (Ctrl+Z)" disabled class="p-1 hover:bg-white/10 rounded disabled:opacity-25 transition">↩</button>
+          <button onclick="redo()" id="btn-redo" title="Redo (Ctrl+Y)" disabled class="p-1 hover:bg-white/10 rounded disabled:opacity-25 transition">↪</button>
+          <button onclick="exportJSON()" title="Export Backup JSON" class="p-1 hover:bg-white/10 rounded text-gray-300 transition ml-1">💾</button>
+        </div>
+      </div>
+
+      <div class="flex items-baseline justify-between gap-2">
+        <div class="flex items-center gap-2 flex-1 overflow-hidden">
+          <span id="sidebar-icon" class="text-2xl">⚡</span>
+          <h1 class="text-xl font-bold text-white tracking-tight truncate" id="sidebar-title">Total/h1>
+        </div>
+        <div class="text-right">
+          <div class="text-2xl font-extrabold text-white font-mono tracking-tight" id="sidebar-total">0</div>
+          <div class="text-[10px] text-gray-400 font-mono" id="sidebar-unit">TOTAL UNITS</div>
+        </div>
+      </div>
+
+      <!-- Progress Bar (Share of Parent) -->
+      <div class="w-full bg-white/5 h-1.5 rounded-full overflow-hidden flex">
+        <div id="sidebar-progress-bar" class="bg-accent h-full transition-all duration-500" style="width: 100%;"></div>
+      </div>
+      <div class="flex justify-between text-[10px] text-gray-400 font-mono">
+        <span id="sidebar-share-parent">100% of parent</span>
+        <span id="sidebar-share-total">100% of total life</span>
+      </div>
+    </div>
+
+    <!-- Children List (HTML5 Drag-and-Drop Reordering) -->
+    <div class="px-5 py-3 text-[11px] font-bold uppercase tracking-wider text-gray-400 border-b border-borderDark/50 flex justify-between items-center">
+      <span>Sub-Sections (<span id="child-count">0</span>)</span>
+      <span class="text-[9px] text-gray-500 font-normal lowercase">drag to reorder</span>
+    </div>
+
+    <div class="flex-1 overflow-y-auto p-4 space-y-2" id="children-container">
+      <!-- Dynamically rendered -->
+    </div>
+
+    <!-- Footer: Quick Append Form -->
+    <div class="p-4 border-t border-borderDark bg-black/30">
+      <form id="add-form" class="flex flex-col gap-2" onsubmit="handleCreateChild(event)">
+        <div class="flex gap-1.5">
+          <input type="text" id="new-child-icon" placeholder="🚀" maxlength="2" title="Emoji Icon"
+            class="w-10 bg-black/50 border border-borderDark rounded-lg text-center text-sm focus:outline-none focus:border-accent transition">
+          <input type="text" id="new-child-name" placeholder="New category name..." required
+            class="flex-1 bg-black/50 border border-borderDark rounded-lg px-3 py-1.5 text-xs text-white placeholder-gray-500 focus:outline-none focus:border-accent transition">
+        </div>
+        <div class="flex gap-1.5">
+          <input type="number" id="new-child-val" placeholder="Val" value="10" min="0" step="any"
+            class="w-20 bg-black/50 border border-borderDark rounded-lg px-2 py-1.5 text-xs text-white text-center font-mono focus:outline-none focus:border-accent transition">
+          <input type="text" id="new-child-unit" placeholder="Unit (e.g. hrs, pts)"
+            class="w-24 bg-black/50 border border-borderDark rounded-lg px-2 py-1.5 text-xs text-white placeholder-gray-500 focus:outline-none focus:border-accent transition">
+          <button type="submit"
+            class="flex-1 bg-accent hover:bg-blue-600 active:scale-95 text-white text-xs font-semibold py-1.5 rounded-lg transition shadow-glow shadow-accent/20">
+            + Append
+          </button>
+        </div>
       </form>
     </div>
   </div>
 
+  <!-- COMMAND PALETTE MODAL (Ctrl+K) -->
+  <div id="cmd-palette-backdrop" class="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 hidden flex items-start justify-center pt-24 animate-fade-in" onclick="closeCommandPalette()">
+    <div class="w-[540px] bg-panel border border-borderDark rounded-2xl shadow-2xl overflow-hidden flex flex-col" onclick="event.stopPropagation()">
+      <div class="p-3.5 border-b border-borderDark flex items-center gap-3 bg-black/20">
+        <span class="text-gray-400 text-sm pl-2">🔍</span>
+        <input type="text" id="cmd-input" placeholder="Type a command or fuzzy search sections..."
+          class="w-full bg-transparent text-sm text-white placeholder-gray-500 focus:outline-none font-medium">
+        <kbd class="bg-white/10 px-2 py-0.5 rounded text-[10px] text-gray-400 font-mono">ESC</kbd>
+      </div>
+      <div id="cmd-results" class="max-h-80 overflow-y-auto p-2 space-y-1 divide-y divide-borderDark/30">
+        <!-- Dynamically generated -->
+      </div>
+    </div>
+  </div>
+
   <!-- RIGHT CLICK CONTEXT MENU -->
-  <div id="context-menu" class="absolute hidden z-50 w-44 bg-panel/95 border border-borderDark rounded-xl shadow-2xl backdrop-blur-xl py-1.5 text-xs divide-y divide-borderDark/50">
+  <div id="context-menu" class="fixed hidden z-50 w-48 bg-panel/95 border border-borderDark rounded-xl shadow-2xl backdrop-blur-2xl py-1.5 text-xs divide-y divide-borderDark/50 font-medium">
     <div class="py-1">
       <button onclick="ctxAction('add')" class="w-full px-4 py-2 text-left hover:bg-white/10 flex items-center gap-2 text-gray-200">
-        <span class="text-accent">+</span> Add Child Sub-section
+        <span class="text-accent">+</span> Add Child Node
       </button>
       <button onclick="ctxAction('rename')" class="w-full px-4 py-2 text-left hover:bg-white/10 flex items-center gap-2 text-gray-200">
-        <span>✎</span> Rename Section
+        <span>✎</span> Edit Name & Icon
       </button>
     </div>
     <div class="py-1">
       <button onclick="ctxAction('duplicate')" class="w-full px-4 py-2 text-left hover:bg-white/10 flex items-center gap-2 text-gray-200">
-        <span>⧉</span> Duplicate Branch
+        <span>⧉</span> Duplicate Subtree
+      </button>
+      <button onclick="ctxAction('focus')" class="w-full px-4 py-2 text-left hover:bg-white/10 flex items-center gap-2 text-gray-200">
+        <span>◎</span> Isolate in Focus Mode
       </button>
     </div>
     <div class="py-1">
       <button onclick="ctxAction('delete')" class="w-full px-4 py-2 text-left hover:bg-red-500/20 text-red-400 flex items-center gap-2">
-        <span>✕</span> Delete Section
+        <span>✕</span> Delete Branch
       </button>
     </div>
   </div>
 
-  <!-- JAVASCRIPT ENGINE -->
   <script>
-    // --- 1. PERSISTENCE ENGINE (IndexedDB + LocalStorage Fallback) ---
-    const DB_NAME = 'BaobabProgressDB';
+    // --- 1. PERSISTENCE & SNAPSHOT ENGINE (Undo/Redo) ---
+    const DB_NAME = 'BaobabProDB';
     const STORE_NAME = 'treeStore';
     let dbInstance = null;
 
-    function initDB() {
+    let historyStack = [];
+    let redoStack = [];
+    const MAX_HISTORY = 40;
+
+    async function initDB() {
       return new Promise((resolve) => {
-        const request = indexedDB.open(DB_NAME, 1);
-        request.onupgradeneeded = (e) => {
+        const req = indexedDB.open(DB_NAME, 2);
+        req.onupgradeneeded = (e) => {
           const db = e.target.result;
-          if (!db.objectStoreNames.contains(STORE_NAME)) {
-            db.createObjectStore(STORE_NAME);
-          }
+          if (!db.objectStoreNames.contains(STORE_NAME)) db.createObjectStore(STORE_NAME);
         };
-        request.onsuccess = (e) => { dbInstance = e.target.result; resolve(true); };
-        request.onerror = () => { console.warn("IndexedDB blocked, falling back to localStorage"); resolve(false); };
+        req.onsuccess = (e) => { dbInstance = e.target.result; resolve(true); };
+        req.onerror = () => resolve(false);
       });
     }
 
-    async function saveTreeToDB() {
+    async function saveState(pushHistory = true) {
+      if (pushHistory) {
+        historyStack.push(JSON.stringify(treeData));
+        if (historyStack.length > MAX_HISTORY) historyStack.shift();
+        redoStack = []; // Clear redo on new action
+        updateUndoRedoButtons();
+      }
+
       if (dbInstance) {
         const tx = dbInstance.transaction(STORE_NAME, 'readwrite');
         tx.objectStore(STORE_NAME).put(treeData, 'rootTree');
       } else {
-        localStorage.setItem('baobab_tree_data', JSON.stringify(treeData));
+        localStorage.setItem('baobab_pro_tree', JSON.stringify(treeData));
       }
+      showSaveIndicator();
     }
 
-    async function loadTreeFromDB() {
-      if (dbInstance) {
-        return new Promise((resolve) => {
-          const tx = dbInstance.transaction(STORE_NAME, 'readonly');
-          const req = tx.objectStore(STORE_NAME).get('rootTree');
-          req.onsuccess = () => resolve(req.result);
-          req.onerror = () => resolve(null);
-        });
-      }
-      const local = localStorage.getItem('baobab_tree_data');
-      return local ? JSON.parse(local) : null;
+    function undo() {
+      if (historyStack.length === 0) return;
+      redoStack.push(JSON.stringify(treeData));
+      treeData = JSON.parse(historyStack.pop());
+      saveState(false);
+      updateUndoRedoButtons();
+      renderSunburst();
     }
 
-    // --- 2. DEFAULT TREE DATASET ---
+    function redo() {
+      if (redoStack.length === 0) return;
+      historyStack.push(JSON.stringify(treeData));
+      treeData = JSON.parse(redoStack.pop());
+      saveState(false);
+      updateUndoRedoButtons();
+      renderSunburst();
+    }
+
+    function updateUndoRedoButtons() {
+      document.getElementById('btn-undo').disabled = historyStack.length === 0;
+      document.getElementById('btn-redo').disabled = redoStack.length === 0;
+    }
+
+    function showSaveIndicator() {
+      const ind = document.getElementById('save-indicator');
+      ind.style.opacity = '1';
+      clearTimeout(window._saveTimer);
+      window._saveTimer = setTimeout(() => ind.style.opacity = '0', 1800);
+    }
+
+    // --- 2. DEFAULT TREE SCHEMA ---
     const defaultData = {
-      id: "root", name: "Entire Life", color: "#6366f1",
+      id: "root", name: "Total", icon: "🌌", unit: "pts", color: "#3b82f6",
       children: [
         {
-          id: "learning", name: "Learning", color: "#3b82f6", // Blue
+          id: "prog", name: "Programming & Dev", icon: "💻", unit: "hrs", color: "#3b82f6", // Blue
           children: [
-            {
-              id: "math", name: "Math", children: [
-                { id: "alg", name: "Algebra", value: 34 },
-                { id: "geo", name: "Geometry", value: 12 },
-                { id: "calc", name: "Calculus", value: 7 }
-              ]
-            },
-            {
-              id: "prog", name: "Programming", children: [
-                { id: "py", name: "Python", value: 84 },
-                { id: "godot", name: "Godot Engine", value: 25 },
-                { id: "algo", name: "Algorithms", value: 11 }
-              ]
-            },
-            {
-              id: "lang", name: "Languages", children: [
-                { id: "amh", name: "Amharic", value: 16 },
-                { id: "jap", name: "Japanese", value: 2 }
-              ]
-            }
+            { id: "py", name: "Python Algorithms", icon: "🐍", value: 84, unit: "problems" },
+            { id: "godot", name: "Godot Engine Games", icon: "🎮", value: 42, unit: "hrs" },
+            { id: "sys", name: "Linux Arch Setup", icon: "🐧", value: 18, unit: "tasks" }
           ]
         },
         {
-          id: "fitness", name: "Fitness", color: "#10b981", // Green
+          id: "fit", name: "Strength & Fitness", icon: "🏋️", unit: "sessions", color: "#10b981", // Green
           children: [
-            { id: "upper", name: "Upper Body Split", value: 18 },
-            { id: "lower", name: "Lower Body Split", value: 14 },
-            { id: "cardio", name: "Conditioning", value: 8 }
+            { id: "upper", name: "Upper Body Split", icon: "💪", value: 24, unit: "days" },
+            { id: "lower", name: "Lower Body Heavy", icon: "🦵", value: 18, unit: "days" },
+            { id: "run", name: "Cardio Conditioning", icon: "🏃", value: 12, unit: "km" }
           ]
         },
         {
-          id: "projects", name: "Projects", color: "#8b5cf6", // Purple
+          id: "learn", name: "Academic & Study", icon: "📚", unit: "chapters", color: "#8b5cf6", // Purple
           children: [
-            { id: "led", name: "LED Physics Website", value: 45 },
-            { id: "paper", name: "Python Academic Paper", value: 30 },
-            { id: "linux", name: "Linux System Setup", value: 15 }
+            { id: "sat", name: "SAT Prep Timeline", icon: "📝", value: 65, unit: "%" },
+            { id: "math", name: "Calculus & Linear Alg", icon: "📐", value: 30, unit: "hrs" },
+            { id: "led", name: "Physics LED Project", icon: "💡", value: 100, unit: "%" }
           ]
         }
       ]
@@ -243,45 +334,90 @@
 
     let treeData = defaultData;
     let currentFocusId = "root";
-    let selectedNodeId = "root"; // For keyboard navigation & context menu
+    let selectedNodeId = "root";
+    let focusMode = false;
     let ctxTargetId = null;
 
-    // --- 3. COLOR PALETTE GENERATOR ---
-    const baseHues = ["#3b82f6", "#10b981", "#8b5cf6", "#f59e0b", "#ec4899", "#06b6d4", "#ef4444"];
-    function getSectorColor(d) {
-      if (d.depth === 0) return "#1e1e24";
-      // Find top-level ancestor
+    // Zoom & Navigation History
+    let navStack = ["root"];
+    let navIdx = 0;
+
+    function pushNavHistory(id) {
+      if (navStack[navIdx] === id) return;
+      navStack = navStack.slice(0, navIdx + 1);
+      navStack.push(id);
+      navIdx = navStack.length - 1;
+      updateNavButtons();
+    }
+
+    function navHistory(dir) {
+      const targetIdx = navIdx + dir;
+      if (targetIdx >= 0 && targetIdx < navStack.length) {
+        navIdx = targetIdx;
+        focusOn(navStack[navIdx], false);
+        updateNavButtons();
+      }
+    }
+
+    function updateNavButtons() {
+      document.getElementById('btn-back').disabled = navIdx <= 0;
+      document.getElementById('btn-fwd').disabled = navIdx >= navStack.length - 1;
+    }
+
+    // --- 3. D3 SUNBURST WITH SVG GRADIENT ENGINE ---
+    const baseHues = ["#3b82f6", "#10b981", "#8b5cf6", "#f59e0b", "#ec4899", "#06b6d4"];
+    function getSectorColors(d) {
+      if (d.depth === 0) return { fill: "#18181c", stroke: "#262630" };
       let ancestor = d;
       while (ancestor.depth > 1) ancestor = ancestor.parent;
 
-      let base = ancestor.data.color;
-      if (!base) {
-        const idx = ancestor.parent.children.indexOf(ancestor);
-        base = baseHues[idx % baseHues.length];
-        ancestor.data.color = base; // Cache it
-      }
+      let base = ancestor.data.color || baseHues[ancestor.parent.children.indexOf(ancestor) % baseHues.length];
+      ancestor.data.color = base;
 
-      // Generate monochrome shade based on depth and sibling index
       const c = d3.hsl(base);
-      const siblingIdx = d.parent ? d.parent.children.indexOf(d) : 0;
-      c.s = Math.max(0.3, c.s - (d.depth - 1) * 0.12);
-      c.l = Math.max(0.25, Math.min(0.75, c.l + (siblingIdx * 0.08) - ((d.depth - 1) * 0.06)));
-      return c.toString();
+      const idx = d.parent ? d.parent.children.indexOf(d) : 0;
+      c.s = Math.max(0.35, c.s - (d.depth - 1) * 0.12);
+      c.l = Math.max(0.22, Math.min(0.75, c.l + (idx * 0.07) - ((d.depth - 1) * 0.05)));
+
+      const gradientEnd = d3.hsl(c);
+      gradientEnd.l = Math.max(0.15, c.l - 0.12);
+
+      return { fill: c.toString(), end: gradientEnd.toString() };
     }
 
-    // --- 4. D3 SUNBURST ENGINE ---
     const container = document.getElementById('canvas-container');
     let width = Math.min(container.clientWidth, container.clientHeight) * 0.92;
     let radius = width / 6;
 
     const svg = d3.select("#chart").append("svg")
       .attr("viewBox", `-${width / 2} -${width / 2} ${width} ${width}`)
-      .attr("class", "w-full h-full max-w-4xl max-h-4xl drop-shadow-2xl");
+      .attr("class", "w-full h-full max-w-5xl max-h-5xl drop-shadow-2xl overflow-visible");
+
+    // Defs for Dynamic Gradients & Shadows
+    const defs = svg.append("defs");
+
+    // Camera Zoom Group (for mousewheel pan/zoom infinite canvas feeling)
+    const cameraGroup = svg.append("g").attr("id", "camera-group");
+
+    const zoomBehavior = d3.zoom()
+      .scaleExtent([0.3, 5])
+      .on("zoom", (e) => {
+        cameraGroup.attr("transform", e.transform);
+        document.getElementById('btn-reset-cam').style.display =
+          (e.transform.k !== 1 || e.transform.x !== 0 || e.transform.y !== 0) ? 'block' : 'none';
+      });
+
+    d3.select("#chart").call(zoomBehavior).on("dblclick.zoom", null);
+
+    function resetCamera() {
+      d3.select("#chart").transition().duration(600).ease(d3.easeCubicOut)
+        .call(zoomBehavior.transform, d3.zoomIdentity);
+    }
 
     const arc = d3.arc()
       .startAngle(d => d.x0)
       .endAngle(d => d.x1)
-      .padAngle(d => Math.min((d.x1 - d.x0) / 2, 0.006))
+      .padAngle(d => Math.min((d.x1 - d.x0) / 2, 0.007))
       .padRadius(radius * 1.5)
       .innerRadius(d => d.y0 * radius)
       .outerRadius(d => Math.max(d.y0 * radius, d.y1 * radius - 2));
@@ -289,7 +425,9 @@
     let root, path, labelGroup;
 
     function renderSunburst() {
-      svg.selectAll("*").remove();
+      defs.selectAll("linearGradient").remove();
+      cameraGroup.selectAll("*").remove();
+
       width = Math.min(container.clientWidth, container.clientHeight) * 0.92;
       radius = width / 6;
       svg.attr("viewBox", `-${width / 2} -${width / 2} ${width} ${width}`);
@@ -300,52 +438,58 @@
 
       d3.partition().size([2 * Math.PI, root.height + 1])(root);
 
-      // Center Disc Hitbox & Labels
-      const centerGroup = svg.append("g").attr("class", "center-group");
-      centerGroup.append("circle")
-        .attr("r", radius * 0.95)
-        .attr("fill", "#121216")
-        .attr("stroke", "#22222b")
-        .attr("stroke-width", 2)
+      // Center Dashboard Disc
+      const centerDisc = cameraGroup.append("g").attr("class", "center-disc");
+      centerDisc.append("circle")
+        .attr("r", radius * 0.96)
+        .attr("fill", "#121215")
+        .attr("stroke", "#262630")
+        .attr("stroke-width", 2.5)
         .attr("class", "cursor-pointer transition hover:fill-[#1a1a20]")
         .on("click", () => {
-          const current = findD3Node(currentFocusId);
-          if (current && current.parent) focusOn(current.parent.data.id);
+          const cur = findD3Node(currentFocusId);
+          if (cur && cur.parent) focusOn(cur.parent.data.id);
         });
 
-      centerGroup.append("text").attr("class", "center-title text-base font-bold fill-white text-anchor-middle").attr("text-anchor", "middle").attr("dy", "-0.3em");
-      centerGroup.append("text").attr("class", "center-val text-xs font-mono fill-gray-400 text-anchor-middle").attr("text-anchor", "middle").attr("dy", "1.2em");
-      centerGroup.append("text").attr("class", "center-sub text-[9px] uppercase tracking-widest fill-blue-400 text-anchor-middle").attr("text-anchor", "middle").attr("dy", "2.8em");
+      centerDisc.append("text").attr("class", "center-icon text-3xl text-anchor-middle").attr("text-anchor", "middle").attr("dy", "-1.1em");
+      centerDisc.append("text").attr("class", "center-title text-sm font-bold fill-white text-anchor-middle tracking-tight").attr("text-anchor", "middle").attr("dy", "0.1em");
+      centerDisc.append("text").attr("class", "center-val text-lg font-mono font-extrabold fill-accent text-anchor-middle").attr("text-anchor", "middle").attr("dy", "1.4em");
+      centerDisc.append("text").attr("class", "center-sub text-[9px] uppercase tracking-widest fill-gray-400 text-anchor-middle").attr("text-anchor", "middle").attr("dy", "3.6em");
 
-      // Draw Sector Arcs
-      path = svg.append("g")
+      // Render Sectors with Gradients
+      const nodes = root.descendants().slice(1);
+
+      nodes.forEach(d => {
+        const colors = getSectorColors(d);
+        const gradId = `grad-${d.data.id}`;
+        const grad = defs.append("linearGradient").attr("id", gradId).attr("x1", "0%").attr("y1", "0%").attr("x2", "100%").attr("y2", "100%");
+        grad.append("stop").attr("offset", "0%").attr("stop-color", colors.fill);
+        grad.append("stop").attr("offset", "100%").attr("stop-color", colors.end);
+        d.gradId = gradId;
+      });
+
+      path = cameraGroup.append("g")
         .selectAll("path")
-        .data(root.descendants().slice(1))
+        .data(nodes)
         .join("path")
-        .attr("class", d => `sector ${d.data.id === selectedNodeId ? 'selected' : ''}`)
-        .attr("fill", d => getSectorColor(d))
-        .attr("stroke", "#0a0a0c")
+        .attr("id", d => `arc-${d.data.id}`)
+        .attr("class", d => `sector ${focusMode && !isDescendant(findD3Node(currentFocusId), d) ? 'dimmed' : ''}`)
+        .attr("fill", d => `url(#${d.gradId})`)
+        .attr("stroke", "#09090b")
         .attr("stroke-width", 1.5)
         .attr("d", d => arc(d.current || d))
         .on("click", (event, p) => {
           event.stopPropagation();
           selectNode(p.data.id);
-          if (p.data.id === currentFocusId && p.children) {
-            // Already focused, don't re-zoom
-          } else {
-            focusOn(p.data.id);
-          }
+          if (p.data.id !== currentFocusId || !p.children) focusOn(p.data.id);
         })
         .on("contextmenu", (event, p) => {
-          event.preventDefault();
-          event.stopPropagation();
+          event.preventDefault(); event.stopPropagation();
           selectNode(p.data.id);
           showContextMenu(event.pageX, event.pageY, p.data.id);
         });
 
-      // Text Labels on Arcs
-      labelGroup = svg.append("g").attr("pointer-events", "none").attr("text-anchor", "middle");
-
+      labelGroup = cameraGroup.append("g").attr("pointer-events", "none").attr("text-anchor", "middle");
       path.each(d => d.current = d);
 
       const targetNode = findD3Node(currentFocusId) || root;
@@ -353,19 +497,25 @@
       updateUI();
     }
 
-    function isVisible(d) {
-      return d.y1 <= 4 && d.y0 >= 1 && d.x1 > d.x0;
+    function isVisible(d) { return d.y1 <= 4 && d.y0 >= 1 && d.x1 > d.x0; }
+    function isDescendant(parent, node) {
+      if (!parent) return true;
+      let curr = node;
+      while (curr) { if (curr === parent) return true; curr = curr.parent; }
+      return false;
     }
 
-    function updateChartState(p, animate = true) {
+    function updateChartState(p, animate = true, pushNav = true) {
       currentFocusId = p.data.id;
+      if (pushNav) pushNavHistory(p.data.id);
 
-      // Update Center Disc Text
-      svg.select(".center-title").text(p.data.name.length > 14 ? p.data.name.slice(0, 13) + '…' : p.data.name);
-      svg.select(".center-val").text(`${p.value || 0} TOTAL`);
-      svg.select(".center-sub").text(p.depth === 0 ? "CLICK ARC TO DRILL" : "▲ CLICK TO ZOOM OUT");
+      // Update Dashboard Center Disc
+      svg.select(".center-icon").text(p.data.icon || "🪐");
+      svg.select(".center-title").text(p.data.name.length > 15 ? p.data.name.slice(0, 14) + '…' : p.data.name);
+      svg.select(".center-val").text(`${p.value || 0} ${p.data.unit || 'pts'}`);
+      svg.select(".center-sub").text(p.depth === 0 ? `root • ${p.children ? p.children.length : 0} branches` : "▲ click disc to zoom out");
 
-      const t = svg.transition().duration(animate ? 650 : 0).ease(d3.easeCubicOut);
+      const t = cameraGroup.transition().duration(animate ? 700 : 0).ease(d3.easeCubicOut);
 
       root.each(d => {
         d.target = {
@@ -381,21 +531,19 @@
           const i = d3.interpolate(d.current, d.target);
           return t => d.current = i(t);
         })
-        .filter(function(d) {
-          return +this.getAttribute("fill-opacity") || isVisible(d.target);
-        })
-        .attr("fill-opacity", d => isVisible(d.target) ? 0.9 : 0)
+        .filter(function(d) { return +this.getAttribute("fill-opacity") || isVisible(d.target); })
+        .attr("fill-opacity", d => isVisible(d.target) ? 0.95 : 0)
         .attr("pointer-events", d => isVisible(d.target) ? "auto" : "none")
         .attrTween("d", d => () => arc(d.current));
 
-      // Refresh Labels dynamically based on sector width
+      // Re-project Labels
       labelGroup.selectAll("text").remove();
-      const visibleNodes = root.descendants().slice(1).filter(d => isVisible(d.target) && (d.target.x1 - d.target.x0) > 0.12);
+      const visibleNodes = root.descendants().slice(1).filter(d => isVisible(d.target) && (d.target.x1 - d.target.x0) > 0.14);
 
       const labels = labelGroup.selectAll("text")
         .data(visibleNodes)
         .join("text")
-        .attr("class", "fill-white font-medium text-[11px] drop-shadow-md transition-opacity duration-300")
+        .attr("class", "fill-white font-semibold text-[11px] drop-shadow-md transition-opacity duration-300")
         .style("opacity", animate ? 0 : 1)
         .attr("transform", d => {
           const x = (d.target.x0 + d.target.x1) / 2 * 180 / Math.PI;
@@ -404,418 +552,471 @@
         })
         .attr("dy", "0.3em")
         .text(d => {
-          const angle = d.target.x1 - d.target.x0;
-          const name = d.data.name;
-          if (angle < 0.25 && name.length > 8) return name.slice(0, 7) + '…';
-          return `${name} (${d.value || 0})`;
+          const ang = d.target.x1 - d.target.x0;
+          const label = `${d.data.icon || ''} ${d.data.name}`;
+          if (ang < 0.28 && label.length > 9) return label.slice(0, 8) + '…';
+          return `${label} (${d.value || 0})`;
         });
 
-      if (animate) labels.transition().delay(400).duration(250).style("opacity", 1);
+      if (animate) labels.transition().delay(350).duration(250).style("opacity", 1);
     }
 
-    function focusOn(id) {
+    function focusOn(id, pushNav = true) {
       const target = findD3Node(id);
       if (target) {
-        updateChartState(target, true);
-        updateUI();
+        updateChartState(target, true, pushNav);
+        selectNode(id);
       }
     }
 
     function selectNode(id) {
       selectedNodeId = id;
-      svg.selectAll("path.sector").attr("class", d => `sector ${d.data.id === selectedNodeId ? 'selected' : ''}`);
       updateUI();
     }
 
-    // --- 5. UI, SIDEBAR & BREADCRUMBS ---
+    function toggleFocusMode() {
+      focusMode = !focusMode;
+      document.getElementById("focus-text").innerText = focusMode ? "Focus On" : "Focus Off";
+      document.getElementById("btn-focus").classList.toggle("border-accent", focusMode);
+      document.getElementById("btn-focus").classList.toggle("text-accent", focusMode);
+
+      const target = findD3Node(currentFocusId);
+      path.attr("class", d => `sector ${focusMode && !isDescendant(target, d) ? 'dimmed' : ''}`);
+    }
+
+    // --- 4. PRO INSPECTOR & HTML5 DRAG AND DROP ---
     function updateUI() {
       const d3Focus = findD3Node(currentFocusId) || root;
       const d3Selected = findD3Node(selectedNodeId) || d3Focus;
       const rawNode = findRawNode(treeData, selectedNodeId) || treeData;
 
-      // Sidebar Header
-      document.getElementById("sidebar-depth-label").innerText = d3Selected.depth === 0 ? "Root Directory" : `Level ${d3Selected.depth} • Parent: ${d3Selected.parent ? d3Selected.parent.data.name : 'Root'}`;
+      document.getElementById("sidebar-depth-label").innerText = d3Selected.depth === 0 ? "Root Overview" : `Level ${d3Selected.depth} • ${d3Selected.parent.data.name}`;
+      document.getElementById("sidebar-icon").innerText = rawNode.icon || "📁";
       document.getElementById("sidebar-title").innerText = rawNode.name;
-      document.getElementById("sidebar-total").innerText = d3Selected.value || 0;
 
-      // Render Breadcrumbs
-      const bcContainer = document.getElementById("breadcrumbs");
-      bcContainer.innerHTML = "";
-      const ancestors = d3Focus.ancestors().reverse();
-      ancestors.forEach((anc, idx) => {
+      // Odometer effect on total value
+      const totalEl = document.getElementById("sidebar-total");
+      if (totalEl.innerText !== String(d3Selected.value || 0)) {
+        totalEl.classList.remove("animate-odo");
+        void totalEl.offsetWidth;
+        totalEl.innerText = d3Selected.value || 0;
+        totalEl.classList.add("animate-odo");
+      }
+
+      document.getElementById("sidebar-unit").innerText = (rawNode.unit || "pts").toUpperCase();
+
+      // Proportional Shares
+      const parentVal = d3Selected.parent ? d3Selected.parent.value : d3Selected.value;
+      const shareParent = parentVal > 0 ? ((d3Selected.value / parentVal) * 100).toFixed(1) : "100";
+      const shareTotal = root.value > 0 ? ((d3Selected.value / root.value) * 100).toFixed(1) : "100";
+
+      document.getElementById("sidebar-progress-bar").style.width = `${shareParent}%`;
+      document.getElementById("sidebar-share-parent").innerText = d3Selected.depth === 0 ? "100% of parent" : `${shareParent}% of parent (${d3Selected.parent.data.name})`;
+      document.getElementById("sidebar-share-total").innerText = `${shareTotal}% of entire tree`;
+
+      // Breadcrumbs
+      const bcEl = document.getElementById("breadcrumbs");
+      bcEl.innerHTML = "";
+      d3Selected.ancestors().reverse().forEach((anc, i, arr) => {
         const btn = document.createElement("button");
-        btn.className = `hover:text-accent transition flex items-center gap-1 ${idx === ancestors.length - 1 ? 'text-white font-semibold' : 'text-gray-400'}`;
-        btn.innerHTML = `<span>${anc.data.name}</span>`;
+        btn.className = `hover:text-accent font-medium flex items-center gap-1 transition ${anc.data.id === selectedNodeId ? 'text-white underline font-bold decoration-accent decoration-2' : 'text-gray-400'}`;
+        btn.innerHTML = `<span>${anc.data.icon || ''}</span> <span>${anc.data.name}</span>`;
         btn.onclick = () => focusOn(anc.data.id);
-        bcContainer.appendChild(btn);
+        bcEl.appendChild(btn);
 
-        if (idx < ancestors.length - 1) {
+        if (i < arr.length - 1) {
           const sep = document.createElement("span");
-          sep.className = "text-gray-600 select-none";
-          sep.innerText = "›";
-          bcContainer.appendChild(sep);
+          sep.className = "text-gray-600 text-[10px] px-0.5";
+          sep.innerText = "/>";
+          bcEl.appendChild(sep);
         }
       });
 
-      // Render Sub-sections
-      const list = document.getElementById("children-container");
-      list.innerHTML = "";
+      // Render Children
+      const container = document.getElementById("children-container");
+      container.innerHTML = "";
       const children = rawNode.children || [];
+      document.getElementById("child-count").innerText = children.length;
 
       if (children.length === 0) {
-        // Leaf Node View
-        list.innerHTML = `
-          <div class="bg-white/[0.03] border border-borderDark rounded-xl p-5 text-center">
-            <div class="text-xs text-gray-400 mb-3 font-medium">LEAF NODE PROGRESS</div>
-            <div class="flex items-center justify-center gap-4 mb-4">
-              <button onmousedown="startHoldDec('${rawNode.id}')" onmouseup="stopHold()" onmouseleave="stopHold()"
-                class="w-10 h-10 rounded-lg bg-white/5 hover:bg-white/10 active:scale-90 font-bold text-lg text-gray-300 transition flex items-center justify-center shadow">
-                -
-              </button>
-
-              <div id="val-display-${rawNode.id}" onclick="enableManualEdit('${rawNode.id}', ${rawNode.value || 0})"
-                title="Click to manually edit number"
-                class="text-4xl font-mono font-extrabold text-white cursor-pointer px-4 py-1 rounded hover:bg-white/5 transition border border-transparent hover:border-borderDark">
-                ${rawNode.value || 0}
-              </div>
-
-              <button onmousedown="startHoldInc('${rawNode.id}')" onmouseup="stopHold()" onmouseleave="stopHold()"
-                class="w-10 h-10 rounded-lg bg-accent hover:bg-blue-600 active:scale-90 font-bold text-lg text-white transition flex items-center justify-center shadow-glow shadow-accent/20">
-                +
-              </button>
-            </div>
-            <div class="text-[11px] text-gray-500">Hold <kbd class="bg-white/10 px-1 rounded text-gray-400">+</kbd> to rapidly increment or click number to type directly.</div>
-          </div>
-        `;
+        container.innerHTML = `
+          <div class="text-center py-10 border border-dashed border-borderDark rounded-xl text-gray-500 bg-black/20">
+            <p class="text-xs">No children in this branch.</p>
+            <p class="text-[10px] mt-1 text-gray-600">Use form below or press <kbd class="bg-white/10 px-1 rounded">A</kbd> to append.</p>
+          </div>`;
       } else {
-        // Parent Node View
-        children.forEach(child => {
-          const childD3 = root.descendants().find(d => d.data.id === child.id);
-          const val = childD3 ? childD3.value : (child.value || 0);
-          const isSelected = child.id === selectedNodeId;
+        children.forEach((child, idx) => {
+          const el = document.createElement("div");
+          el.className = "group bg-panel border border-borderDark hover:border-gray-500/80 rounded-xl p-3 flex items-center justify-between gap-3 shadow-md transition cursor-pointer select-none relative overflow-hidden";
+          el.draggable = true;
 
-          const card = document.createElement("div");
-          card.className = `group bg-white/[0.02] hover:bg-white/[0.05] border ${isSelected ? 'border-accent bg-accent/5' : 'border-borderDark'} rounded-xl p-3.5 flex items-center justify-between transition cursor-pointer`;
-          card.onclick = () => selectNode(child.id);
-          card.ondblclick = () => focusOn(child.id);
-          card.oncontextmenu = (e) => { e.preventDefault(); e.stopPropagation(); selectNode(child.id); showContextMenu(e.pageX, e.pageY, child.id); };
+          // Drag and Drop Events
+          el.ondragstart = (e) => {
+            e.dataTransfer.setData("text/plain", JSON.stringify({ parentId: rawNode.id, index: idx }));
+            el.classList.add("opacity-40");
+          };
+          el.ondragend = () => el.classList.remove("opacity-40");
+          el.ondragover = (e) => { e.preventDefault(); el.classList.add("border-accent"); };
+          el.ondragleave = () => el.classList.remove("border-accent");
+          el.ondrop = (e) => {
+            e.preventDefault();
+            el.classList.remove("border-accent");
+            const data = JSON.parse(e.dataTransfer.getData("text/plain"));
+            if (data.parentId === rawNode.id && data.index !== idx) {
+              const [moved] = rawNode.children.splice(data.index, 1);
+              rawNode.children.splice(idx, 0, moved);
+              saveState();
+              renderSunburst();
+            }
+          };
 
-          card.innerHTML = `
-            <div class="flex items-center gap-3 overflow-hidden flex-1">
-              <div class="w-2.5 h-2.5 rounded-full flex-shrink-0 shadow-sm" style="background-color: ${childD3 ? getSectorColor(childD3) : '#3b82f6'}"></div>
-              <div class="truncate">
-                <div class="text-xs font-semibold text-gray-200 group-hover:text-white truncate">${child.name}</div>
-                <div class="text-[10px] text-gray-500">${child.children && child.children.length > 0 ? child.children.length + ' sub-branches' : 'Leaf node'}</div>
+          el.onclick = () => focusOn(child.id);
+
+          const isLeaf = !child.children || child.children.length === 0;
+          const childD3 = findD3Node(child.id);
+          const displayVal = childD3 ? childD3.value : (child.value || 0);
+
+          el.innerHTML = `
+            <div class="flex items-center gap-2.5 flex-1 overflow-hidden">
+              <span class="text-gray-600 group-hover:text-gray-400 cursor-grab text-[10px]" title="Drag to reorder">⠿</span>
+              <span class="text-base">${child.icon || '📌'}</span>
+              <div class="flex-1 overflow-hidden">
+                <div class="text-xs font-semibold text-gray-200 group-hover:text-white truncate transition">${child.name}</div>
+                <div class="text-[10px] text-gray-400 font-mono flex items-center gap-2">
+                  <span>val: <strong class="text-white">${displayVal}</strong> ${child.unit || rawNode.unit || 'pts'}</span>
+                  ${!isLeaf ? `<span class="bg-white/10 px-1 rounded text-[9px] text-gray-300">${child.children.length} sub</span>` : ''}
+                </div>
               </div>
             </div>
-            <div class="flex items-center gap-2">
-              <span id="pill-${child.id}" class="text-xs font-mono font-bold text-gray-300 bg-black/40 px-2.5 py-1 rounded-md border border-borderDark/60">${val}</span>
-              <button onclick="event.stopPropagation(); quickInc('${child.id}', 1)" title="Quick +1"
-                class="w-7 h-7 rounded-md bg-white/5 hover:bg-accent text-gray-300 hover:text-white active:scale-90 font-bold transition flex items-center justify-center text-xs">
-                +
-              </button>
+
+            <div class="flex items-center gap-1 opacity-90 group-hover:opacity-100 transition" onclick="event.stopPropagation()">
+              <button onclick="quickInc('${child.id}', -1)" title="Hold to repeat" class="w-6 h-6 rounded-md bg-black/40 hover:bg-white/15 border border-borderDark flex items-center justify-center text-xs font-mono text-gray-300 active:scale-90 transition font-bold">-</button>
+              <button onclick="quickInc('${child.id}', 1)" title="Hold to repeat" class="w-6 h-6 rounded-md bg-black/40 hover:bg-white/15 border border-borderDark flex items-center justify-center text-xs font-mono text-gray-300 active:scale-90 transition font-bold">+</button>
+
+              <div class="relative ml-1">
+                <button onclick="showInlineMenu(event, '${child.id}')" class="p-1 text-gray-500 hover:text-white rounded">⋮</button>
+              </div>
             </div>
           `;
-          list.appendChild(card);
+
+          // Attach hold-to-repeat increment auto-acceleration
+          const btns = el.querySelectorAll("button[title='Hold to repeat']");
+          setupHoldToRepeat(btns[0], () => quickInc(child.id, -1));
+          setupHoldToRepeat(btns[1], () => quickInc(child.id, 1));
+
+          container.appendChild(el);
         });
       }
-
-      updateStatistics();
     }
 
-    function updateStatistics() {
-      const all = root.descendants();
-      const leaves = all.filter(d => !d.children || d.children.length === 0);
-      const totalDepth = d3.max(all, d => d.depth);
-      const avg = leaves.length > 0 ? (d3.sum(leaves, d => d.value) / leaves.length).toFixed(1) : 0;
-
-      document.getElementById("stat-cats").innerText = all.length - 1;
-      document.getElementById("stat-depth").innerText = totalDepth;
-      document.getElementById("stat-avg").innerText = avg;
+    // Hold-to-repeat acceleration
+    function setupHoldToRepeat(btn, actionFn) {
+      let timer, delay = 300, interval = 150;
+      const start = (e) => {
+        if (e.button !== 0) return;
+        actionFn();
+        timer = setTimeout(function repeat() {
+          actionFn();
+          if (interval > 30) interval = Math.floor(interval * 0.88);
+          timer = setTimeout(repeat, interval);
+        }, delay);
+      };
+      const stop = () => { clearTimeout(timer); delay = 300; interval = 150; };
+      btn.addEventListener('mousedown', start);
+      window.addEventListener('mouseup', stop);
+      btn.addEventListener('mouseleave', stop);
     }
 
-    // --- 6. INCREMENT, HOLD-TO-REPEAT & MANUAL EDITING ---
-    let holdTimer = null;
-    let holdSpeed = 200;
-
-    function quickInc(id, amount) {
+    function quickInc(id, delta) {
       const node = findRawNode(treeData, id);
       if (!node) return;
       if (node.children && node.children.length > 0) {
-        // If parent, increment its first leaf or ignore
-        alert("Parent section totals auto-calculate from their children! Drill down to increment individual items.");
+        alert("Cannot increment a parent branch directly. Change its sub-sections!");
         return;
       }
-      node.value = Math.max(0, (Number(node.value) || 0) + amount);
-      saveTreeToDB();
-      renderSunburst();
+      node.value = Math.max(0, (Number(node.value) || 0) + delta);
 
-      // Trigger bounce animation on UI pill
-      const pill = document.getElementById(`pill-${id}`) || document.getElementById(`val-display-${id}`);
-      if (pill) {
-        pill.classList.remove("animate-bounce-short");
-        void pill.offsetWidth; // Trigger reflow
-        pill.classList.add("animate-bounce-short");
-      }
-    }
-
-    function startHoldInc(id) {
-      quickInc(id, 1);
-      holdSpeed = 200;
-      holdTimer = setTimeout(function repeat() {
-        quickInc(id, 1);
-        holdSpeed = Math.max(30, holdSpeed * 0.85); // Accelerate
-        holdTimer = setTimeout(repeat, holdSpeed);
-      }, 350);
-    }
-
-    function startHoldDec(id) {
-      quickInc(id, -1);
-      holdSpeed = 200;
-      holdTimer = setTimeout(function repeat() {
-        quickInc(id, -1);
-        holdSpeed = Math.max(30, holdSpeed * 0.85);
-        holdTimer = setTimeout(repeat, holdSpeed);
-      }, 350);
-    }
-
-    function stopHold() {
-      if (holdTimer) clearTimeout(holdTimer);
-      holdTimer = null;
-    }
-
-    function enableManualEdit(id, currentVal) {
-      const container = document.getElementById(`val-display-${id}`);
-      if (!container) return;
-
-      container.outerHTML = `
-        <input type="number" id="edit-input-${id}" value="${currentVal}"
-          class="w-32 text-center text-3xl font-mono font-extrabold bg-black/60 border-2 border-accent rounded-lg text-white py-1 focus:outline-none shadow-glow shadow-accent/30"
-          onblur="saveManualEdit('${id}', this.value)"
-          onkeydown="if(event.key === 'Enter') this.blur();">
-      `;
-      const inp = document.getElementById(`edit-input-${id}`);
-      inp.focus();
-      inp.select();
-    }
-
-    function saveManualEdit(id, newVal) {
-      const node = findRawNode(treeData, id);
-      if (node) {
-        node.value = Math.max(0, Number(newVal) || 0);
-        saveTreeToDB();
-        renderSunburst();
-      }
-    }
-
-    // --- 7. TREE STRUCTURE MUTATIONS & CONTEXT MENU ---
-    function handleCreateChild(e) {
-      e.preventDefault();
-      const nameInp = document.getElementById("new-child-name");
-      const valInp = document.getElementById("new-child-val");
-      const name = nameInp.value.trim();
-      const val = Math.max(0, Number(valInp.value) || 0);
-
-      if (!name) return;
-      const parent = findRawNode(treeData, selectedNodeId) || treeData;
-
-      if (!parent.children) {
-        parent.children = [];
-        delete parent.value; // Convert leaf to parent branch
-      }
-
-      parent.children.push({
-        id: "node_" + Date.now() + "_" + Math.random().toString(36).substr(2, 3),
-        name: name,
-        value: val
-      });
-
-      nameInp.value = "";
-      valInp.value = "10";
-      saveTreeToDB();
-      renderSunburst();
-    }
-
-    const menu = document.getElementById("context-menu");
-    function showContextMenu(x, y, id) {
-      ctxTargetId = id;
-      menu.style.left = `${Math.min(x, window.innerWidth - 180)}px`;
-      menu.style.top = `${Math.min(y, window.innerHeight - 150)}px`;
-      menu.classList.remove("hidden");
-    }
-
-    document.addEventListener("click", () => menu.classList.add("hidden"));
-
-    function ctxAction(action) {
-      menu.classList.add("hidden");
-      const id = ctxTargetId || selectedNodeId;
-      if (id === "root" && action !== "add") {
-        alert("Cannot modify Root directory directly!");
-        return;
-      }
-
-      if (action === 'delete') {
-        if (!confirm("Delete this section and all nested sub-branches?")) return;
-        deleteNodeRecursive(treeData, id);
-      } else if (action === 'rename') {
-        const node = findRawNode(treeData, id);
-        const newName = prompt("Enter new section name:", node.name);
-        if (newName && newName.trim()) node.name = newName.trim();
-      } else if (action === 'add') {
-        const node = findRawNode(treeData, id);
-        const childName = prompt(`Add sub-section inside "${node.name}":`, "New Goal");
-        if (childName && childName.trim()) {
-          if (!node.children) { node.children = []; delete node.value; }
-          node.children.push({ id: "node_" + Date.now(), name: childName.trim(), value: 10 });
-        }
-      } else if (action === 'duplicate') {
-        duplicateNodeRecursive(treeData, id);
-      }
-
-      saveTreeToDB();
-      renderSunburst();
-    }
-
-    function deleteNodeRecursive(parent, targetId) {
-      if (!parent.children) return false;
-      const idx = parent.children.findIndex(c => c.id === targetId);
-      if (idx !== -1) {
-        parent.children.splice(idx, 1);
-        if (selectedNodeId === targetId) selectedNodeId = parent.id;
-        return true;
-      }
-      for (let c of parent.children) {
-        if (deleteNodeRecursive(c, targetId)) return true;
-      }
-      return false;
-    }
-
-    function duplicateNodeRecursive(parent, targetId) {
-      if (!parent.children) return false;
-      const idx = parent.children.findIndex(c => c.id === targetId);
-      if (idx !== -1) {
-        const clone = JSON.parse(JSON.stringify(parent.children[idx]));
-        clone.id = "node_" + Date.now();
-        clone.name += " (Copy)";
-        parent.children.splice(idx + 1, 0, clone);
-        return true;
-      }
-      for (let c of parent.children) {
-        if (duplicateNodeRecursive(c, targetId)) return true;
-      }
-      return false;
-    }
-
-    // --- 8. SEARCH ENGINE & KEYBOARD SHORTCUTS ---
-    const searchInp = document.getElementById("search-input");
-    const searchRes = document.getElementById("search-results");
-
-    searchInp.addEventListener("input", (e) => {
-      const q = e.target.value.toLowerCase().trim();
-      if (!q) { searchRes.classList.add("hidden"); return; }
-
-      const matches = root.descendants().filter(d => d.depth > 0 && d.data.name.toLowerCase().includes(q));
-      searchRes.innerHTML = "";
-
-      if (matches.length === 0) {
-        searchRes.innerHTML = `<div class="p-3 text-gray-500 text-center">No matching categories found</div>`;
-      } else {
-        matches.slice(0, 8).forEach(m => {
-          const pathStr = m.ancestors().reverse().map(a => a.data.name).join(" › ");
-          const div = document.createElement("div");
-          div.className = "p-3 hover:bg-white/10 cursor-pointer transition flex justify-between items-center";
-          div.innerHTML = `
-            <div class="truncate">
-              <div class="font-semibold text-white truncate">${m.data.name}</div>
-              <div class="text-[10px] text-gray-500 truncate">${pathStr}</div>
-            </div>
-            <span class="font-mono text-xs text-accent bg-accent/10 px-2 py-0.5 rounded ml-2">${m.value || 0}</span>
-          `;
-          div.onclick = () => {
-            selectNode(m.data.id);
-            focusOn(m.data.id);
-            searchRes.classList.add("hidden");
-            searchInp.value = "";
-          };
-          searchRes.appendChild(div);
+      // Trigger parent pulse glow on ancestor SVG arcs
+      const d3Node = findD3Node(id);
+      if (d3Node) {
+        d3Node.ancestors().forEach(anc => {
+          const arcEl = document.getElementById(`arc-${anc.data.id}`);
+          if (arcEl) {
+            arcEl.classList.remove("parent-pulse");
+            void arcEl.offsetWidth;
+            arcEl.classList.add("parent-pulse");
+          }
         });
       }
-      searchRes.classList.remove("hidden");
+
+      saveState();
+      renderSunburst();
+    }
+
+    // --- 5. COMMAND PALETTE (Ctrl+K) & FUZZY SEARCH ---
+    let searchHighlightTimer = null;
+
+    function openCommandPalette() {
+      const modal = document.getElementById("cmd-palette-backdrop");
+      const input = document.getElementById("cmd-input");
+      modal.classList.remove("hidden");
+      input.value = "";
+      input.focus();
+      renderCmdResults("");
+    }
+
+    function closeCommandPalette() {
+      document.getElementById("cmd-palette-backdrop").classList.add("hidden");
+    }
+
+    document.getElementById("cmd-input").addEventListener("input", (e) => {
+      renderCmdResults(e.target.value);
     });
 
-    document.addEventListener("click", (e) => {
-      if (!searchInp.contains(e.target) && !searchRes.contains(e.target)) searchRes.classList.add("hidden");
-    });
+    function renderCmdResults(query) {
+      const container = document.getElementById("cmd-results");
+      container.innerHTML = "";
+      const q = query.toLowerCase().trim();
 
-    // Global Keyboard Navigation
-    document.addEventListener("keydown", (e) => {
-      if (['INPUT', 'TEXTAREA'].includes(document.activeElement.tagName)) return;
+      // System Commands
+      const commands = [
+        { icon: "◎", title: "Toggle Focus Mode", sub: "Dim unselected branches", action: () => { toggleFocusMode(); closeCommandPalette(); } },
+        { icon: "↩", title: "Undo Last Action", sub: "Restore previous state snapshot", action: () => { undo(); closeCommandPalette(); } },
+        { icon: "⌖", title: "Reset Camera View", sub: "Center and unzoom infinite canvas", action: () => { resetCamera(); closeCommandPalette(); } },
+        { icon: "💾", title: "Export Backup JSON", sub: "Download current state as file", action: () => { exportJSON(); closeCommandPalette(); } }
+      ];
 
-      const currentD3 = findD3Node(selectedNodeId) || root;
-      if (!currentD3) return;
+      // Fuzzy search tree nodes
+      const allNodes = [];
+      root.each(d => allNodes.push(d));
 
-      if (e.key === "ArrowDown" || e.key === "ArrowRight" || e.key === "Tab") {
-        e.preventDefault();
-        const siblings = currentD3.parent ? currentD3.parent.children : [root];
-        const idx = siblings.indexOf(currentD3);
-        const next = siblings[(idx + 1) % siblings.length];
-        selectNode(next.data.id);
-      } else if (e.key === "ArrowUp" || e.key === "ArrowLeft") {
-        e.preventDefault();
-        const siblings = currentD3.parent ? currentD3.parent.children : [root];
-        const idx = siblings.indexOf(currentD3);
-        const prev = siblings[(idx - 1 + siblings.length) % siblings.length];
-        selectNode(prev.data.id);
-      } else if (e.key === " " || e.key === "+") {
-        e.preventDefault();
-        quickInc(selectedNodeId, 1);
-      } else if (e.key === "-") {
-        e.preventDefault();
-        quickInc(selectedNodeId, -1);
-      } else if (e.key === "Enter") {
-        e.preventDefault();
-        if (currentD3.children && currentD3.children.length > 0) {
-          focusOn(selectedNodeId);
-        } else {
-          enableManualEdit(selectedNodeId, currentD3.value || 0);
-        }
-      } else if (e.key === "Delete" || e.key === "Backspace") {
-        if (selectedNodeId !== "root") {
-          e.preventDefault();
-          ctxTargetId = selectedNodeId;
-          ctxAction('delete');
-        }
-      } else if (e.ctrlKey && e.key.toLowerCase() === "d") {
-        e.preventDefault();
-        ctxTargetId = selectedNodeId;
-        ctxAction('duplicate');
+      const matchedNodes = allNodes.filter(d =>
+        !q || d.data.name.toLowerCase().includes(q) || (d.data.icon && d.data.icon.includes(q))
+      );
+
+      const matchedCmds = commands.filter(c => !q || c.title.toLowerCase().includes(q));
+
+      // Render commands first if query matches
+      if (matchedCmds.length > 0) {
+        const hdr = document.createElement("div");
+        hdr.className = "text-[10px] font-bold text-gray-500 uppercase px-3 pt-2 pb-1 tracking-wider";
+        hdr.innerText = "System Commands";
+        container.appendChild(hdr);
+
+        matchedCmds.forEach(cmd => {
+          const el = document.createElement("div");
+          el.className = "p-2.5 hover:bg-white/10 rounded-xl flex items-center justify-between cursor-pointer transition text-xs";
+          el.innerHTML = `
+            <div class="flex items-center gap-3">
+              <span class="text-base text-accent">${cmd.icon}</span>
+              <div>
+                <div class="font-semibold text-white">${cmd.title}</div>
+                <div class="text-[10px] text-gray-400">${cmd.sub}</div>
+              </div>
+            </div>
+            <kbd class="bg-white/5 border border-white/10 px-1.5 py-0.5 rounded text-[9px] text-gray-400 font-mono">Execute</kbd>
+          `;
+          el.onclick = cmd.action;
+          container.appendChild(el);
+        });
       }
-    });
 
-    // --- 9. UTILITY HELPERS ---
-    function findD3Node(id) { return root.descendants().find(d => d.data.id === id); }
-    function findRawNode(node, id) {
-      if (node.id === id) return node;
-      if (node.children) {
-        for (let c of node.children) {
-          let f = findRawNode(c, id);
-          if (f) return f;
+      // Render matched nodes
+      if (matchedNodes.length > 0) {
+        const hdr = document.createElement("div");
+        hdr.className = "text-[10px] font-bold text-gray-500 uppercase px-3 pt-3 pb-1 tracking-wider";
+        hdr.innerText = `Nodes & Sections (${matchedNodes.length})`;
+        container.appendChild(hdr);
+
+        matchedNodes.slice(0, 15).forEach(d => {
+          const el = document.createElement("div");
+          el.className = "p-2 hover:bg-white/10 rounded-xl flex items-center justify-between cursor-pointer transition text-xs";
+          el.innerHTML = `
+            <div class="flex items-center gap-2.5 overflow-hidden">
+              <span class="text-base">${d.data.icon || '📁'}</span>
+              <div class="truncate">
+                <span class="font-medium text-gray-200">${d.data.name}</span>
+                <span class="text-[10px] text-gray-500 ml-1.5 font-mono">val: ${d.value || 0}</span>
+              </div>
+            </div>
+            <span class="text-[10px] text-gray-400 bg-black/40 px-2 py-0.5 rounded-md border border-borderDark font-mono">Level ${d.depth}</span>
+          `;
+          el.onclick = () => {
+            focusOn(d.data.id);
+            closeCommandPalette();
+
+            // Search highlight glow
+            svg.selectAll("path.sector").classList?.remove("search-highlight");
+            const targetArc = document.getElementById(`arc-${d.data.id}`);
+            if (targetArc) {
+              targetArc.classList.add("search-highlight");
+              clearTimeout(searchHighlightTimer);
+              searchHighlightTimer = setTimeout(() => targetArc.classList.remove("search-highlight"), 2500);
+            }
+          };
+          container.appendChild(el);
+        });
+      }
+    }
+
+    // --- 6. NODE OPERATIONS & TREE HELPER ALGORITHMS ---
+    function findD3Node(id) {
+      if (!root) return null;
+      return root.descendants().find(d => d.data.id === id);
+    }
+
+    function findRawNode(curr, id) {
+      if (curr.id === id) return curr;
+      if (curr.children) {
+        for (let c of curr.children) {
+          const res = findRawNode(c, id);
+          if (res) return res;
         }
       }
       return null;
     }
 
-    // --- 10. SYSTEM BOOTSTRAP ---
-    window.addEventListener("DOMContentLoaded", async () => {
-      await initDB();
-      const saved = await loadTreeFromDB();
-      if (saved && saved.children) treeData = saved;
-      renderSunburst();
+    function findParentRaw(curr, id) {
+      if (!curr.children) return null;
+      for (let c of curr.children) {
+        if (c.id === id) return curr;
+        const res = findParentRaw(c, id);
+        if (res) return res;
+      }
+      return null;
+    }
 
-      // Responsive redraw on resize
-      window.addEventListener("resize", () => {
-        if (root) renderSunburst();
-      });
+    function handleCreateChild(e) {
+      e.preventDefault();
+      const parent = findRawNode(treeData, selectedNodeId);
+      if (!parent) return;
+
+      const icon = document.getElementById("new-child-icon").value.trim() || "📌";
+      const name = document.getElementById("new-child-name").value.trim();
+      const val = parseFloat(document.getElementById("new-child-val").value) || 0;
+      const unit = document.getElementById("new-child-unit").value.trim() || parent.unit || "pts";
+
+      if (!parent.children) parent.children = [];
+
+      const newId = "node_" + Math.random().toString(36).substr(2, 7);
+      parent.children.push({ id: newId, name, icon, value: val, unit });
+
+      document.getElementById("new-child-name").value = "";
+      saveState();
+      renderSunburst();
+      focusOn(selectedNodeId);
+    }
+
+    // Context & Inline Actions
+    function showContextMenu(x, y, id) {
+      ctxTargetId = id;
+      const menu = document.getElementById("context-menu");
+      menu.style.left = `${Math.min(x, window.innerWidth - 200)}px`;
+      menu.style.top = `${Math.min(y, window.innerHeight - 150)}px`;
+      menu.classList.remove("hidden");
+    }
+
+    function showInlineMenu(event, id) {
+      event.stopPropagation();
+      showContextMenu(event.pageX - 140, event.pageY + 15, id);
+    }
+
+    function ctxAction(type) {
+      document.getElementById("context-menu").classList.add("hidden");
+      if (!ctxTargetId) return;
+      const target = findRawNode(treeData, ctxTargetId);
+      if (!target) return;
+
+      if (type === 'add') {
+        selectNode(ctxTargetId);
+        document.getElementById("new-child-name").focus();
+      } else if (type === 'rename') {
+        const newName = prompt("New Name:", target.name);
+        if (newName !== null) target.name = newName.trim() || target.name;
+        const newIcon = prompt("New Emoji Icon:", target.icon || "📌");
+        if (newIcon !== null) target.icon = newIcon.trim() || target.icon;
+        saveState(); renderSunburst();
+      } else if (type === 'duplicate') {
+        const parent = findParentRaw(treeData, ctxTargetId);
+        if (parent && parent.children) {
+          const clone = JSON.parse(JSON.stringify(target));
+          clone.id = "node_" + Math.random().toString(36).substr(2, 7);
+          clone.name = clone.name + " (Copy)";
+          parent.children.push(clone);
+          saveState(); renderSunburst();
+        }
+      } else if (type === 'focus') {
+        focusOn(ctxTargetId);
+      } else if (type === 'delete') {
+        if (ctxTargetId === 'root') { alert("Cannot delete Total root!"); return; }
+        if (confirm(`Delete branch "${target.name}" and all sub-sections?`)) {
+          const parent = findParentRaw(treeData, ctxTargetId);
+          if (parent) {
+            parent.children = parent.children.filter(c => c.id !== ctxTargetId);
+            if (selectedNodeId === ctxTargetId) selectedNodeId = parent.id;
+            if (currentFocusId === ctxTargetId) currentFocusId = parent.id;
+            saveState(); renderSunburst();
+          }
+        }
+      }
+    }
+
+    function exportJSON() {
+      const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(treeData, null, 2));
+      const dl = document.createElement('a');
+      dl.setAttribute("href", dataStr);
+      dl.setAttribute("download", `BaobabPro_${new Date().toISOString().slice(0,10)}.json`);
+      dl.click();
+    }
+
+    // --- 7. GLOBAL EVENT LISTENERS & HOTKEYS ---
+    window.addEventListener("click", () => {
+      document.getElementById("context-menu").classList.add("hidden");
+    });
+
+    window.addEventListener("keydown", (e) => {
+      // Command Palette Trigger (Ctrl+K or Cmd+K)
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        openCommandPalette();
+      }
+      // Undo/Redo Shortcuts
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
+        e.preventDefault();
+        if (e.shiftKey) redo(); else undo();
+      }
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'y') {
+        e.preventDefault();
+        redo();
+      }
+      // Quick Add shortcut (Press 'A' outside inputs)
+      if (e.key.toLowerCase() === 'a' && document.activeElement.tagName !== 'INPUT') {
+        e.preventDefault();
+        document.getElementById("new-child-name").focus();
+      }
+      // Escape closes command palette
+      if (e.key === 'Escape') {
+        closeCommandPalette();
+        document.getElementById("context-menu").classList.add("hidden");
+      }
+    });
+
+    window.addEventListener("resize", () => renderSunburst());
+
+    // --- 8. INIT APP ---
+    initDB().then(() => {
+      if (dbInstance) {
+        const tx = dbInstance.transaction(STORE_NAME, 'readonly');
+        const req = tx.objectStore(STORE_NAME).get('rootTree');
+        req.onsuccess = () => {
+          if (req.result) treeData = req.result;
+          else if (localStorage.getItem('baobab_pro_tree')) treeData = JSON.parse(localStorage.getItem('baobab_pro_tree'));
+          renderSunburst();
+        };
+      } else {
+        if (localStorage.getItem('baobab_pro_tree')) treeData = JSON.parse(localStorage.getItem('baobab_pro_tree'));
+        renderSunburst();
+      }
     });
   </script>
 </body>
