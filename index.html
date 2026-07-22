@@ -53,44 +53,41 @@
     path.sector.search-highlight { stroke: #fbbf24 !important; stroke-width: 3px !important; filter: drop-shadow(0 0 10px #fbbf24); }
 
     .glass-panel {
-      background: rgba(18, 18, 21, 0.85);
-      backdrop-filter: blur(20px);
-      -webkit-backdrop-filter: blur(20px);
+      background: rgba(18, 18, 21, 0.88);
+      backdrop-filter: blur(24px);
+      -webkit-backdrop-filter: blur(24px);
+    }
+
+    /* Ensure text along arcs renders cleanly */
+    textPath {
+      dominant-baseline: central;
     }
   </style>
 </head>
 <body class="bg-canvas text-gray-100 flex h-screen w-screen overflow-hidden select-none relative">
 
-  <!-- AMBIENT FLOATING PARTICLES BACKGROUND -->
+  <!-- 1. AMBIENT WHITE FLOATING PARTICLES BACKGROUND -->
   <canvas id="particle-canvas" class="fixed inset-0 pointer-events-none z-0"></canvas>
 
-  <!-- TOP NAVIGATION BAR -->
-  <div class="absolute top-4 left-6 right-6 h-12 z-20 flex items-center justify-between pointer-events-none gap-4">
-    <!-- Zoom History & Breadcrumbs -->
-    <div class="flex items-center gap-2 pointer-events-auto">
-      <div class="flex bg-panel/90 border border-borderDark rounded-lg p-1 shadow-lg backdrop-blur-md">
-        <button onclick="navHistory(-1)" id="btn-back" title="Back (Alt+Left)" class="p-1.5 hover:bg-white/10 rounded text-gray-400 hover:text-white disabled:opacity-30 disabled:pointer-events-none transition">◀</button>
-        <button onclick="navHistory(1)" id="btn-fwd" title="Forward (Alt+Right)" class="p-1.5 hover:bg-white/10 rounded text-gray-400 hover:text-white disabled:opacity-30 disabled:pointer-events-none transition">▶</button>
-      </div>
-
-      <div id="breadcrumbs" class="flex items-center gap-1.5 bg-panel/90 border border-borderDark px-4 py-2 rounded-lg shadow-lg backdrop-blur-md text-xs font-semibold tracking-wide overflow-x-auto max-w-xl">
-        <!-- Dynamically populated -->
-      </div>
-    </div>
-
-    <!-- Sidebar Toggle Button -->
-    <div class="pointer-events-auto flex items-center gap-2">
-      <button onclick="toggleSidebar()" id="btn-toggle-sidebar"
-        class="bg-panel/90 border border-borderDark hover:border-accent px-3.5 py-2 rounded-lg text-xs font-medium text-gray-300 hover:text-white transition shadow-lg flex items-center gap-2 backdrop-blur-md">
-        <span>☰</span> <span id="sidebar-toggle-text">Hide Sidebar</span>
-      </button>
+  <!-- 2. TOP BREADCRUMB NAVIGATION -->
+  <div class="absolute top-5 left-6 z-20 pointer-events-none flex items-center gap-3">
+    <div id="breadcrumbs" class="pointer-events-auto flex items-center gap-1.5 bg-panel/90 border border-borderDark px-4 py-2.5 rounded-xl shadow-2xl backdrop-blur-md text-xs font-semibold tracking-wide overflow-x-auto max-w-xl">
+      <!-- Dynamically populated -->
     </div>
   </div>
 
-  <!-- HOVER TOOLTIP -->
+  <!-- 3. PROMINENT FLOATING SIDEBAR TOGGLE BUTTON -->
+  <button onclick="toggleSidebar()" id="btn-toggle-sidebar"
+    style="right: 395px;"
+    class="fixed top-5 z-50 bg-panel/95 border-2 border-accent/80 hover:border-accent text-white px-4 py-2.5 rounded-xl text-xs font-bold shadow-2xl backdrop-blur-xl flex items-center gap-2.5 transition-all duration-300 hover:scale-105 active:scale-95 shadow-glow shadow-accent/20 cursor-pointer">
+    <span class="text-base leading-none">☰</span>
+    <span id="sidebar-toggle-text">Hide Sidebar</span>
+  </button>
+
+  <!-- 4. HOVER TOOLTIP -->
   <div id="tooltip" class="fixed hidden z-50 pointer-events-none bg-panel/95 border border-borderDark px-3.5 py-2.5 rounded-xl shadow-2xl backdrop-blur-md text-xs transition-opacity duration-150"></div>
 
-  <!-- CENTER: D3 INFINITE CANVAS & SUNBURST -->
+  <!-- 5. CENTER: D3 INFINITE CANVAS & SUNBURST -->
   <div class="flex-1 h-full relative overflow-hidden transition-all duration-300 z-10" id="main-content" style="margin-right: 380px;">
     <div id="chart" class="w-full h-full cursor-grab active:cursor-grabbing"></div>
 
@@ -109,11 +106,11 @@
     </div>
   </div>
 
-  <!-- RIGHT SIDEBAR: PRO INSPECTOR -->
-  <div id="sidebar" class="fixed top-0 right-0 w-[380px] h-full glass-panel border-l border-borderDark flex flex-col z-30 shadow-2xl transition-transform duration-300 ease-in-out translate-x-0">
+  <!-- 6. RIGHT SIDEBAR: PRO INSPECTOR -->
+  <div id="sidebar" class="fixed top-0 right-0 w-[380px] h-full glass-panel border-l border-borderDark flex flex-col z-40 shadow-2xl transition-transform duration-300 ease-in-out translate-x-0">
 
     <!-- Top Bar: Undo/Redo & Node Metadata -->
-    <div class="p-5 border-b border-borderDark bg-black/20 flex flex-col gap-3.5">
+    <div class="p-5 border-b border-borderDark bg-black/20 flex flex-col gap-3.5 pt-6">
       <div class="flex items-center justify-between text-xs text-gray-400 font-medium">
         <span id="sidebar-depth-label" class="text-accent uppercase tracking-wider font-bold">Root Overview</span>
         <div class="flex items-center gap-1">
@@ -206,7 +203,7 @@
   </div>
 
   <script>
-    // --- 1. AMBIENT FLOATING PARTICLES CANVAS ---
+    // --- 1. AMBIENT WHITE FLOATING PARTICLES CANVAS ---
     const pCanvas = document.getElementById('particle-canvas');
     const pCtx = pCanvas.getContext('2d');
     let particles = [];
@@ -215,15 +212,18 @@
       pCanvas.width = window.innerWidth;
       pCanvas.height = window.innerHeight;
       particles = [];
-      const count = Math.floor((window.innerWidth * window.innerHeight) / 25000);
-      for (let i = 0; i < Math.min(count, 55); i++) {
+      // Triple density: ~150+ particles on standard desktop
+      const count = Math.floor((window.innerWidth * window.innerHeight) / 8000);
+      for (let i = 0; i < Math.min(count, 180); i++) {
         particles.push({
           x: Math.random() * pCanvas.width,
           y: Math.random() * pCanvas.height,
-          r: Math.random() * 1.8 + 0.6,
-          dx: (Math.random() - 0.5) * 0.35,
-          dy: (Math.random() - 0.5) * 0.35 - 0.15,
-          alpha: Math.random() * 0.35 + 0.1
+          // Varying small sizes from tiny 0.4px specks to 2.2px dots
+          r: Math.random() * 1.8 + 0.4,
+          // Varying speeds and directions
+          dx: (Math.random() - 0.5) * (Math.random() * 1.2 + 0.2),
+          dy: (Math.random() - 0.5) * (Math.random() * 1.2 + 0.2) - 0.1,
+          alpha: Math.random() * 0.65 + 0.15
         });
       }
     }
@@ -239,7 +239,8 @@
         if (p.y > pCanvas.height) p.y = 0;
         pCtx.beginPath();
         pCtx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
-        pCtx.fillStyle = `rgba(59, 130, 246, ${p.alpha})`;
+        // Pure white particles
+        pCtx.fillStyle = `rgba(255, 255, 255, ${p.alpha})`;
         pCtx.fill();
       });
       requestAnimationFrame(animateParticles);
@@ -255,14 +256,17 @@
       const sb = document.getElementById("sidebar");
       const main = document.getElementById("main-content");
       const text = document.getElementById("sidebar-toggle-text");
+      const btn = document.getElementById("btn-toggle-sidebar");
 
       if (sidebarOpen) {
         sb.classList.remove("translate-x-full");
         main.style.marginRight = "380px";
+        btn.style.right = "395px";
         text.innerText = "Hide Sidebar";
       } else {
         sb.classList.add("translate-x-full");
         main.style.marginRight = "0px";
+        btn.style.right = "20px";
         text.innerText = "Show Sidebar";
       }
       setTimeout(() => renderSunburst(), 310);
@@ -334,7 +338,7 @@
       window._saveTimer = setTimeout(() => ind.style.opacity = '0', 1800);
     }
 
-    // --- 4. REQUESTED PLACEHOLDER SCHEMA ---
+    // --- 4. DEFAULT PLACEHOLDER SCHEMA ---
     const defaultData = {
       id: "root", name: "Total", color: "#3b82f6",
       children: [
@@ -364,32 +368,7 @@
     let selectedNodeId = "root";
     let ctxTargetId = null;
 
-    let navStack = ["root"];
-    let navIdx = 0;
-
-    function pushNavHistory(id) {
-      if (navStack[navIdx] === id) return;
-      navStack = navStack.slice(0, navIdx + 1);
-      navStack.push(id);
-      navIdx = navStack.length - 1;
-      updateNavButtons();
-    }
-
-    function navHistory(dir) {
-      const targetIdx = navIdx + dir;
-      if (targetIdx >= 0 && targetIdx < navStack.length) {
-        navIdx = targetIdx;
-        focusOn(navStack[navIdx], false);
-        updateNavButtons();
-      }
-    }
-
-    function updateNavButtons() {
-      document.getElementById('btn-back').disabled = navIdx <= 0;
-      document.getElementById('btn-fwd').disabled = navIdx >= navStack.length - 1;
-    }
-
-    // --- 5. D3 SUNBURST ENGINE WITH HOVER TOOLTIPS ---
+    // --- 5. D3 SUNBURST ENGINE WITH CURVED TEXT WRAPPING ---
     const baseHues = ["#3b82f6", "#10b981", "#8b5cf6", "#f59e0b", "#ec4899", "#06b6d4"];
     function getSectorColors(d) {
       if (d.depth === 0) return { fill: "#18181c", stroke: "#262630" };
@@ -419,6 +398,7 @@
       .attr("class", "w-full h-full max-w-5xl max-h-5xl drop-shadow-2xl overflow-visible");
 
     const defs = svg.append("defs");
+    const labelDefs = svg.append("defs").attr("id", "label-arc-defs");
     const cameraGroup = svg.append("g").attr("id", "camera-group");
 
     const zoomBehavior = d3.zoom()
@@ -444,10 +424,39 @@
       .innerRadius(d => d.y0 * radius)
       .outerRadius(d => Math.max(d.y0 * radius, d.y1 * radius - 2));
 
+    // Helper: Generate circular SVG path along the middle radius of a sector for <textPath>
+    function getMiddleArcPath(d) {
+      const r = (d.target.y0 + d.target.y1) / 2 * radius;
+      let a0 = d.target.x0;
+      let a1 = d.target.x1;
+      if (a1 <= a0 || r <= 0) return "M 0 0";
+
+      const midAngle = (a0 + a1) / 2;
+      // If arc is in bottom half of circle (90 deg to 270 deg), reverse arc direction so text reads upright
+      const isBottom = midAngle > Math.PI / 2 && midAngle < 3 * Math.PI / 2;
+
+      if (isBottom) {
+        const x0 = r * Math.sin(a1);
+        const y0 = -r * Math.cos(a1);
+        const x1 = r * Math.sin(a0);
+        const y1 = -r * Math.cos(a0);
+        const largeArc = (a1 - a0) > Math.PI ? 1 : 0;
+        return `M ${x0} ${y0} A ${r} ${r} 0 ${largeArc} 0 ${x1} ${y1}`;
+      } else {
+        const x0 = r * Math.sin(a0);
+        const y0 = -r * Math.cos(a0);
+        const x1 = r * Math.sin(a1);
+        const y1 = -r * Math.cos(a1);
+        const largeArc = (a1 - a0) > Math.PI ? 1 : 0;
+        return `M ${x0} ${y0} A ${r} ${r} 0 ${largeArc} 1 ${x1} ${y1}`;
+      }
+    }
+
     let root, path, labelGroup;
 
     function renderSunburst() {
       defs.selectAll("linearGradient").remove();
+      labelDefs.selectAll("*").remove();
       cameraGroup.selectAll("*").remove();
 
       width = Math.min(container.clientWidth, container.clientHeight) * 0.92;
@@ -533,7 +542,7 @@
           showContextMenu(event.pageX, event.pageY, p.data.id);
         });
 
-      labelGroup = cameraGroup.append("g").attr("pointer-events", "none").attr("text-anchor", "middle");
+      labelGroup = cameraGroup.append("g").attr("pointer-events", "none");
       path.each(d => d.current = d);
 
       const targetNode = findD3Node(currentFocusId) || root;
@@ -541,11 +550,11 @@
       updateUI();
     }
 
-    function isVisible(d) { return d.y1 <= 4 && d.y0 >= 1 && d.x1 > d.x0; }
+    // STRICT 2-RING LIMIT: Only render sectors where y1 <= 3 (Center disc = Level 0, Ring 1 = Level 1, Ring 2 = Level 2)
+    function isVisible(d) { return d.y1 <= 3 && d.y0 >= 1 && d.x1 > d.x0; }
 
-    function updateChartState(p, animate = true, pushNav = true) {
+    function updateChartState(p, animate = true) {
       currentFocusId = p.data.id;
-      if (pushNav) pushNavHistory(p.data.id);
 
       svg.select(".center-title").text(p.data.name.length > 18 ? p.data.name.slice(0, 17) + '…' : p.data.name);
       svg.select(".center-val").text(p.value || 0);
@@ -572,34 +581,53 @@
         .attr("pointer-events", d => isVisible(d.target) ? "auto" : "none")
         .attrTween("d", d => () => arc(d.current));
 
-      labelGroup.selectAll("text").remove();
-      const visibleNodes = root.descendants().slice(1).filter(d => isVisible(d.target) && (d.target.x1 - d.target.x0) > 0.14);
+      // Filter visible nodes that have enough angular width for text
+      const visibleNodes = root.descendants().slice(1).filter(d => isVisible(d.target) && (d.target.x1 - d.target.x0) > 0.12);
+
+      // Update SVG arc paths in <defs> so text wraps along curves
+      labelDefs.selectAll("path")
+        .data(visibleNodes, d => d.data.id)
+        .join("path")
+        .attr("id", d => `textPath-${d.data.id}`)
+        .transition(t)
+        .attrTween("d", d => () => getMiddleArcPath(d));
 
       const labels = labelGroup.selectAll("text")
-        .data(visibleNodes)
+        .data(visibleNodes, d => d.data.id)
         .join("text")
-        .attr("class", "fill-white font-semibold text-[11px] drop-shadow-md transition-opacity duration-300")
-        .style("opacity", animate ? 0 : 1)
-        .attr("transform", d => {
-          const x = (d.target.x0 + d.target.x1) / 2 * 180 / Math.PI;
-          const y = (d.target.y0 + d.target.y1) / 2 * radius;
-          return `rotate(${x - 90}) translate(${y},0) rotate(${x < 180 ? 0 : 180})`;
-        })
-        .attr("dy", "0.3em")
+        .attr("class", "fill-white font-semibold text-[11px] drop-shadow-[0_1px_2px_rgba(0,0,0,0.95)] transition-opacity duration-300")
+        .style("opacity", animate ? 0 : 1);
+
+      labels.selectAll("textPath")
+        .data(d => [d])
+        .join("textPath")
+        .attr("href", d => `#textPath-${d.data.id}`)
+        .attr("startOffset", "50%")
+        .attr("text-anchor", "middle")
         .text(d => {
           const ang = d.target.x1 - d.target.x0;
-          const label = d.data.name;
-          if (ang < 0.28 && label.length > 9) return label.slice(0, 8) + '…';
-          return `${label} (${d.value || 0})`;
+          const r = (d.target.y0 + d.target.y1) / 2 * radius;
+          const arcLen = r * ang;
+          // Calculate max character capacity along this physical arc
+          const maxChars = Math.floor(arcLen / 6.3);
+          let fullStr = `${d.data.name} (${d.value || 0})`;
+
+          if (fullStr.length > maxChars) {
+            if (d.data.name.length > maxChars) {
+              return d.data.name.slice(0, Math.max(2, maxChars - 1)) + '…';
+            }
+            return d.data.name; // Fit category name without numeric value if needed
+          }
+          return fullStr;
         });
 
       if (animate) labels.transition().delay(350).duration(250).style("opacity", 1);
     }
 
-    function focusOn(id, pushNav = true) {
+    function focusOn(id) {
       const target = findD3Node(id);
       if (target) {
-        updateChartState(target, true, pushNav);
+        updateChartState(target, true);
         selectNode(id);
       }
     }
