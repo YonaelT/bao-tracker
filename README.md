@@ -14,15 +14,21 @@ Everything lives in a single HTML file. No server, no account, no install.
 
 ## Usage
 
-1. Download `Baotracker.html`, or clone the repo:
+1. Download `index.html`, or clone the repo:
 
 ```bash
    git clone https://github.com/YonaelT/bao-tracker.git
 ```
 
-2. Open `Baotracker.html` in any modern browser.
+2. Open `index.html` in any modern browser.
 
 That's all. There is no build step and no dependencies to install.
+
+
+## Live version
+
+Try it in your browser: **https://yonaelt.github.io/bao-tracker/**
+
 
 ## Example uses
 
